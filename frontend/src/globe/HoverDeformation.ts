@@ -32,6 +32,8 @@ export class HoverDeformation {
   private neighborhood: WeightedCell[] = [];
   private primitive: Primitive | null = null;
   private destroyed = false;
+  private lastRenderedStrength = -1;
+  private lastRenderedHoverId: number | null = null;
   private readonly postRenderHandler: () => void;
 
   constructor(viewer: Viewer, dataset: GridDataset) {
@@ -81,11 +83,22 @@ export class HoverDeformation {
     }
 
     if (this.currentStrength <= 0.001) {
+      this.lastRenderedStrength = -1;
+      this.lastRenderedHoverId = null;
       this.clearPrimitive();
       return;
     }
 
+    if (
+      Math.abs(this.currentStrength - this.lastRenderedStrength) < 0.01 &&
+      this.hoveredCellId === this.lastRenderedHoverId
+    ) {
+      return;
+    }
+
     this.rebuildPrimitive();
+    this.lastRenderedStrength = this.currentStrength;
+    this.lastRenderedHoverId = this.hoveredCellId;
   }
 
   private rebuildPrimitive(): void {

@@ -4,15 +4,15 @@ This repository now contains a minimal but structured prototype for a global oce
 
 For performance, the underlying 0.25° product is exported as compact binary (`mask_u8.bin`) plus compact metadata (`grid_meta.json`) instead of a giant per-cell polygon JSON. This keeps the base architecture compatible with ~1 million cells while avoiding heavyweight browser parsing for the full-resolution product.
 
-For initial rendering, the backend also exports a coarser 2.0° JSON product for Phase 2. This coarse layer is intentionally small enough to render interactively and verify GUI behavior now, while preserving the 0.25° backend as the target architecture for later LOD refinement.
+For initial rendering, the backend also exports a coarse JSON product (2.0° by default) plus a small `grid_manifest.json` used by the frontend to resolve the current coarse filename dynamically. This prevents hardcoded filename mismatch when `--coarse-resolution` changes.
 
-Cesium rendering is batched using primitives/geometry instances rather than one Cesium entity per cell. Land and ocean are rendered in separate batched primitives with distinct colors, and mouse hover uses scene-level picking so interaction scales with batched geometry.
+Cesium rendering is batched using primitives/geometry instances rather than one Cesium entity per cell. Land and ocean are rendered in separate batched primitives with subtle boundary polylines, and mouse hover uses scene-level picking so interaction scales with batched geometry.
 
 Longitude uses the `[-180, 180]` range and periodic indexing through regular edge spacing. Grid IDs use row-major indexing (`cell_id = lat_index * n_lon + lon_index`) and all bounds/centers are explicitly defined from edge arrays. Validation checks include expected dimensions, spacing continuity, dateline duplication checks, and bounds checks.
 
 Polar handling uses a small rendering simplification in the frontend: polygons touching ±90° are inset to ±89.999° when generating corner vertices to avoid degenerate duplicate-pole vertices in Cesium geometry construction.
 
-The code is split so the masking strategy, export strategy, Cesium layer, picking, and hover-deformation logic are independent modules. This keeps the prototype easy to evolve toward fractional ocean coverage, binary/tiled delivery, and progressive level-of-detail rendering in later phases.
+The code is split so the masking strategy, export strategy, Cesium layer, picking, and hover-deformation logic are independent modules. Hover deformation is isolated from picking/layer modules and only updates a local neighborhood around the hovered ocean cell.
 
 ## Repository structure
 
@@ -67,6 +67,8 @@ pip install -r requirements.txt
 PYTHONPATH=. python scripts/build_grid.py --resolution 0.25 --coarse-resolution 2.0
 pytest -q
 ```
+
+This also writes `frontend/public/data/grid_manifest.json` that the frontend reads at runtime.
 
 If the environment cannot download Natural Earth directly, set:
 

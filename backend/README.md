@@ -15,4 +15,5 @@ PYTHONPATH=. python scripts/build_grid.py
 Outputs:
 - `backend/data/mask_u8.bin` (0=ocean, 1=land)
 - `backend/data/grid_meta.json`
-- `frontend/public/data/coarse_grid_2.0deg.json`
+- `frontend/public/data/coarse_grid_<resolution>.json`
+- `frontend/public/data/grid_manifest.json` (points frontend to active coarse file)
