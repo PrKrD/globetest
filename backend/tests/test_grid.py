@@ -1,6 +1,7 @@
 import numpy as np
+import json
 
-from app.export import _coarsen_mask
+from app.export import _coarsen_mask, export_frontend_manifest
 from app.grid import build_global_grid
 
 
@@ -36,3 +37,16 @@ def test_coarsen_mask_shape_and_values() -> None:
     assert coarse.shape == (2, 4)
     assert set(np.unique(coarse)).issubset({0, 1})
     assert coarse[0, 0] == 1
+
+
+def test_frontend_manifest_tracks_generated_filename(tmp_path) -> None:
+    coarse_path = tmp_path / "coarse_grid_1.0deg.json"
+    coarse_path.write_text("{}", encoding="utf-8")
+    manifest_path = export_frontend_manifest(
+        coarse_grid_path=coarse_path,
+        coarse_resolution_deg=1.0,
+        output_path=tmp_path / "grid_manifest.json",
+    )
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert payload["coarse_grid_path"] == "/data/coarse_grid_1.0deg.json"
+    assert payload["coarse_resolution_deg"] == 1.0

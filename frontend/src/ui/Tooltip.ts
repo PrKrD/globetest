@@ -19,8 +19,15 @@ export class Tooltip {
       <div><strong>Lon:</strong> ${cell.clon.toFixed(3)}°</div>
       <div><strong>Status:</strong> ${status}</div>
     `;
-    this.el.style.left = `${x + 12}px`;
-    this.el.style.top = `${y + 12}px`;
+    const margin = 10;
+    const tooltipWidth = this.el.offsetWidth || 180;
+    const tooltipHeight = this.el.offsetHeight || 84;
+    const maxX = Math.max(margin, window.innerWidth - tooltipWidth - margin);
+    const maxY = Math.max(margin, window.innerHeight - tooltipHeight - margin);
+    const left = Math.min(Math.max(margin, x + 12), maxX);
+    const top = Math.min(Math.max(margin, y + 12), maxY);
+    this.el.style.left = `${left}px`;
+    this.el.style.top = `${top}px`;
     this.el.classList.remove("hidden");
   }
 

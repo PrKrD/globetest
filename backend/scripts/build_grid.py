@@ -11,7 +11,7 @@ from app.config import (
     FRONTEND_PUBLIC_DATA_DIR,
     GRID_RESOLUTION_DEG,
 )
-from app.export import export_binary_mask, export_coarse_grid_json
+from app.export import export_binary_mask, export_coarse_grid_json, export_frontend_manifest
 from app.grid import build_global_grid
 from app.mask import build_land_mask
 
@@ -24,7 +24,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--frontend-output",
         type=str,
-        default=str(FRONTEND_PUBLIC_DATA_DIR / f"coarse_grid_{COARSE_RENDER_RESOLUTION_DEG:.1f}deg.json"),
+        default="",
+    )
+    parser.add_argument(
+        "--frontend-manifest-output",
+        type=str,
+        default=str(FRONTEND_PUBLIC_DATA_DIR / "grid_manifest.json"),
     )
     return parser.parse_args()
 
@@ -36,7 +41,12 @@ def main() -> None:
     mask = build_land_mask(grid, DATA_DIR)
 
     output_dir = Path(args.output_dir)
-    frontend_output = Path(args.frontend_output)
+    frontend_output = (
+        Path(args.frontend_output)
+        if args.frontend_output
+        else FRONTEND_PUBLIC_DATA_DIR / f"coarse_grid_{args.coarse_resolution:.1f}deg.json"
+    )
+    frontend_manifest_output = Path(args.frontend_manifest_output)
 
     mask_path, meta_path = export_binary_mask(grid, mask, output_dir)
     coarse_path = export_coarse_grid_json(
@@ -44,6 +54,11 @@ def main() -> None:
         fine_is_land=mask,
         coarse_resolution_deg=args.coarse_resolution,
         output_path=frontend_output,
+    )
+    manifest_path = export_frontend_manifest(
+        coarse_grid_path=coarse_path,
+        coarse_resolution_deg=args.coarse_resolution,
+        output_path=frontend_manifest_output,
     )
 
     ocean_cells = int((~mask).sum())
@@ -53,6 +68,7 @@ def main() -> None:
     print(f"Wrote binary mask: {mask_path}")
     print(f"Wrote metadata: {meta_path}")
     print(f"Wrote coarse frontend grid: {coarse_path}")
+    print(f"Wrote frontend manifest: {manifest_path}")
 
 
 if __name__ == "__main__":

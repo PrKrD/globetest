@@ -103,3 +103,17 @@ def export_coarse_grid_json(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(payload), encoding="utf-8")
     return output_path
+
+
+def export_frontend_manifest(
+    coarse_grid_path: Path,
+    coarse_resolution_deg: float,
+    output_path: Path,
+) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "coarse_resolution_deg": coarse_resolution_deg,
+        "coarse_grid_path": f"/data/{coarse_grid_path.name}",
+    }
+    output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return output_path

@@ -15,6 +15,10 @@ export class GridPicking {
       const cell = gridLayer.pickCell(movement.endPosition);
       onHover(cell, movement.endPosition.x, movement.endPosition.y);
     }, ScreenSpaceEventType.MOUSE_MOVE);
+    this.handler.setInputAction((movement: { position: { x: number; y: number } }) => {
+      const cell = gridLayer.pickCell(movement.position);
+      onHover(cell, movement.position.x, movement.position.y);
+    }, ScreenSpaceEventType.LEFT_CLICK);
   }
 
   destroy(): void {
