@@ -10,6 +10,7 @@ __pycache__/
 node_modules/
 dist/
 *.tsbuildinfo
+.test-tools/
 
 # Generated data artifacts
 backend/data/*.zip

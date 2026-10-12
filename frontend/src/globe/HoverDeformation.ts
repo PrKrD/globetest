@@ -196,7 +196,10 @@ export class HoverDeformation {
   private clearPrimitive(): void {
     if (this.primitive) {
       this.scene.primitives.remove(this.primitive);
-      this.primitive.destroy();
+      // Removing from the scene normally destroys the primitive already.
+      if (!this.primitive.isDestroyed()) {
+        this.primitive.destroy();
+      }
       this.primitive = null;
     }
   }
