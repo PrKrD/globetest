@@ -1,0 +1,19 @@
+{
+  "name": "ocean-grid-viewer-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "cesium": "^1.125.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vite": "^6.0.0",
+    "vite-plugin-static-copy": "^2.2.0"
+  }
+}
