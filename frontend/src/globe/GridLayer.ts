@@ -29,12 +29,17 @@ export interface GridCell {
   clat: number;
   clon: number;
   is_land: number;
+  has_velocity?: number;
+  velocity_speed_m_per_s?: number;
+  equatorial_uncertainty?: number;
 }
 
 export interface GridDataset {
   resolution_deg: number;
   n_lat: number;
   n_lon: number;
+  dataset_type?: string;
+  velocity_p98_m_per_s?: number;
   cells: GridCell[];
 }
 
@@ -48,6 +53,7 @@ export class GridLayer {
   private boundaryPrimitive: Primitive | undefined;
   private dataset: GridDataset | null = null;
   private cellsById = new Map<number, GridCell>();
+  private showVelocity = true;
 
   constructor(viewer: Viewer) {
     this.scene = viewer.scene;
@@ -59,14 +65,34 @@ export class GridLayer {
     this.dataset = this.withIndices(payload);
     this.cellsById = new Map(this.dataset.cells.map((cell) => [cell.id, cell]));
 
+    this.rebuildDataPrimitives();
+    if (!this.dataset.dataset_type) {
+      this.boundaryPrimitive = this.buildBoundaryPrimitive(this.dataset);
+      this.scene.primitives.add(this.boundaryPrimitive);
+    }
+  }
+
+  setVelocityVisualization(enabled: boolean): void {
+    this.showVelocity = enabled;
+    this.rebuildDataPrimitives();
+  }
+
+  private rebuildDataPrimitives(): void {
+    if (!this.dataset) return;
+    if (this.landPrimitive) this.scene.primitives.remove(this.landPrimitive);
+    if (this.oceanPrimitive) this.scene.primitives.remove(this.oceanPrimitive);
     const landInstances: GeometryInstance[] = [];
     const oceanInstances: GeometryInstance[] = [];
 
     for (const cell of this.dataset.cells) {
       const instance = this.buildCellInstance(cell);
       if (cell.is_land) {
+        instance.attributes = { color: ColorGeometryInstanceAttribute.fromColor(Color.fromCssColorString(LAND_COLOR)) };
         landInstances.push(instance);
       } else {
+        instance.attributes = {
+          color: ColorGeometryInstanceAttribute.fromColor(this.colorForCell(cell)),
+        };
         oceanInstances.push(instance);
       }
     }
@@ -76,8 +102,6 @@ export class GridLayer {
 
     this.scene.primitives.add(this.landPrimitive);
     this.scene.primitives.add(this.oceanPrimitive);
-    this.boundaryPrimitive = this.buildBoundaryPrimitive(this.dataset);
-    this.scene.primitives.add(this.boundaryPrimitive);
   }
 
   getDataset(): GridDataset {
@@ -103,9 +127,7 @@ export class GridLayer {
   private buildPrimitive(instances: GeometryInstance[], hexColor: string): Primitive {
     const color = Color.fromCssColorString(hexColor).withAlpha(0.88);
     for (const instance of instances) {
-      instance.attributes = {
-        color: ColorGeometryInstanceAttribute.fromColor(color),
-      };
+      instance.attributes ??= { color: ColorGeometryInstanceAttribute.fromColor(color) };
     }
 
     return new Primitive({
@@ -145,6 +167,21 @@ export class GridLayer {
       }),
       id: cell,
     });
+  }
+
+  private colorForCell(cell: GridCell): Color {
+    if (!this.showVelocity) {
+      return Color.fromCssColorString(OCEAN_COLOR);
+    }
+    if (cell.equatorial_uncertainty) return Color.fromCssColorString("#d94a43");
+    if (!cell.has_velocity || cell.velocity_speed_m_per_s === undefined || !this.dataset?.velocity_p98_m_per_s) return Color.fromCssColorString(OCEAN_COLOR);
+    const normalized = Math.sqrt(Math.min(cell.velocity_speed_m_per_s / this.dataset.velocity_p98_m_per_s, 1));
+    const low = Color.fromCssColorString("#123b7a");
+    const middle = Color.fromCssColorString("#24b6b0");
+    const high = Color.fromCssColorString("#f2d13d");
+    return normalized < 0.55
+      ? Color.lerp(low, middle, normalized / 0.55, new Color())
+      : Color.lerp(middle, high, (normalized - 0.55) / 0.45, new Color());
   }
 
   private withIndices(payload: GridDataset): GridDataset {

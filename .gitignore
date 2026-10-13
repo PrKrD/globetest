@@ -6,6 +6,11 @@ __pycache__/
 *.egg-info/
 .venv/
 
+# Local machine/editor files
+.DS_Store
+.vscode/
+/package-lock.json
+
 # Node
 node_modules/
 dist/

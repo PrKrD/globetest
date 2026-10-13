@@ -13,11 +13,18 @@ export class Tooltip {
 
   show(cell: GridCell, x: number, y: number): void {
     const status = cell.is_land ? "land" : "ocean";
+    const velocity = cell.has_velocity ? cell.velocity_speed_m_per_s!.toFixed(3) : "unavailable";
+    const confidence = cell.equatorial_uncertainty ? "equatorial / low confidence" : "standard";
     this.el.innerHTML = `
       <div><strong>Cell:</strong> ${cell.id}</div>
       <div><strong>Lat:</strong> ${cell.clat.toFixed(3)}°</div>
       <div><strong>Lon:</strong> ${cell.clon.toFixed(3)}°</div>
       <div><strong>Status:</strong> ${status}</div>
+      <div class="tooltip-section">
+        <strong>Geostrophic velocity</strong>
+        <div><strong>Speed:</strong> ${velocity}${cell.has_velocity ? " m/s" : ""}</div>
+        <div><strong>Confidence:</strong> ${confidence}</div>
+      </div>
     `;
     const margin = 10;
     const tooltipWidth = this.el.offsetWidth || 180;

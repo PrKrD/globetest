@@ -33,6 +33,31 @@ body,
   display: none;
 }
 
+.tooltip-section { margin-top: 5px; padding-top: 5px; border-top: 1px solid rgba(255, 255, 255, 0.25); }
+
+.velocity-controls {
+  position: absolute;
+  z-index: 110;
+  left: 16px;
+  bottom: 16px;
+  min-width: 205px;
+  padding: 10px 12px;
+  border: 1px solid rgba(168, 215, 240, 0.32);
+  border-radius: 10px;
+  background: rgba(7, 21, 35, 0.88);
+  color: #edf8ff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  font-size: 12px;
+}
+
+.control-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 5px 0; }
+.control-master { font-weight: 500; }
+.control-row input { appearance: none; width: 32px; height: 18px; margin: 0; border-radius: 10px; background: #557080; cursor: pointer; transition: background 140ms ease; }
+.control-row input::after { content: ""; display: block; width: 14px; height: 14px; margin: 2px; border-radius: 50%; background: white; transition: transform 140ms ease; }
+.control-row input:checked { background: #20a9b6; }
+.control-row input:checked::after { transform: translateX(14px); }
+.control-row input:disabled { opacity: 0.4; cursor: default; }
+
 .cesium-viewer-toolbar {
   top: 8px;
   right: 8px;

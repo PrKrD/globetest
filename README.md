@@ -1,91 +1,54 @@
-# Ocean Grid Viewer Prototype
+# Ocean Velocity Globe
 
-This repository now contains a minimal but structured prototype for a global ocean-grid viewer. The backend generates a configurable global latitude-longitude grid and classifies each cell as land or ocean from Natural Earth land polygons using center-point masking. The frontend uses TypeScript + CesiumJS to render a coarse, interactive overlay that is aligned to real spherical lat/lon cell corners.
+An interactive Cesium globe built from the Maximenko mean dynamic-topography
+product. Its native 0.5° grid supplies both the displayed land/no-data mask and
+a derived geostrophic-velocity layer.
 
-For performance, the underlying 0.25° product is exported as compact binary (`mask_u8.bin`) plus compact metadata (`grid_meta.json`) instead of a giant per-cell polygon JSON. This keeps the base architecture compatible with ~1 million cells while avoiding heavyweight browser parsing for the full-resolution product.
+## What the globe shows
 
-For initial rendering, the backend also exports a coarse JSON product (2.0° by default) plus a small `grid_manifest.json` used by the frontend to resolve the current coarse filename dynamically. This prevents hardcoded filename mismatch when `--coarse-resolution` changes.
+- **Mask:** Maximenko `MDOT` fill values are displayed as land/no-data. This is
+  data coverage, not a high-resolution coastline.
+- **Velocity:** horizontal ODT gradients are converted to geostrophic velocity
+  outside ±2° latitude. The ±2°–±5° band is coloured red to indicate low
+  confidence; ordinary geostrophy is undefined at the equator.
+- **Controls:** the bottom-left switch enables/disables the velocity colour
+  layer. Off shows the flat Maximenko land/sea mask.
 
-Cesium rendering is batched using primitives/geometry instances rather than one Cesium entity per cell. Land and ocean are rendered in separate batched primitives with subtle boundary polylines, and mouse hover uses scene-level picking so interaction scales with batched geometry.
+Hover details use sectioned groups, beginning with **Geostrophic velocity**.
+Additional products such as mixed-layer depth can add their own independent
+section without changing the location and mask fields.
 
-Longitude uses the `[-180, 180]` range and periodic indexing through regular edge spacing. Grid IDs use row-major indexing (`cell_id = lat_index * n_lon + lon_index`) and all bounds/centers are explicitly defined from edge arrays. Validation checks include expected dimensions, spacing continuity, dateline duplication checks, and bounds checks.
+## Build the dataset
 
-Polar handling uses a small rendering simplification in the frontend: polygons touching ±90° are inset to ±89.999° when generating corner vertices to avoid degenerate duplicate-pole vertices in Cesium geometry construction.
+The raw source must be at `backend/data/Maximenko_dyntopo.nc`.
 
-The code is split so the masking strategy, export strategy, Cesium layer, picking, and hover-deformation logic are independent modules. Hover deformation is isolated from picking/layer modules and only updates a local neighborhood around the hovered ocean cell.
+### Local macOS/Homebrew note
 
-## Repository structure
+This project uses the global Python environment rather than a virtual environment.
+On the local macOS/Homebrew machine, the working Homebrew Git executable is:
 
 ```text
-ocean-grid-viewer/
-├── backend/
-│   ├── app/
-│   │   ├── config.py
-│   │   ├── grid.py
-│   │   ├── mask.py
-│   │   └── export.py
-│   ├── data/
-│   ├── scripts/
-│   │   └── build_grid.py
-│   ├── tests/
-│   │   └── test_grid.py
-│   ├── requirements.txt
-│   └── README.md
-├── frontend/
-│   ├── public/
-│   │   └── data/
-│   ├── src/
-│   │   ├── main.ts
-│   │   ├── globe/
-│   │   │   ├── GridLayer.ts
-│   │   │   ├── GridPicking.ts
-│   │   │   └── HoverDeformation.ts
-│   │   ├── ui/
-│   │   │   └── Tooltip.ts
-│   │   └── config.ts
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── vite.config.ts
-└── README.md
+/opt/homebrew/Cellar/git/2.56.0_1/bin/git
 ```
 
-## Install and run
-
-From repository root:
+Use that path if the macOS Command Line Tools installation reports as missing.
 
 ```bash
-cd /home/runner/work/globetest/globetest
+cd backend
+python3 -m pip install -r requirements.txt
+PYTHONPATH=. python3 scripts/build_dyntopo.py
+python3 -m pytest -q
 ```
 
-Backend setup + grid build:
+This creates `frontend/public/data/maximenko_slope.json`. Export is atomic, so a
+running local viewer keeps its prior dataset until a new build completes.
+
+## Run the globe
 
 ```bash
-cd /home/runner/work/globetest/globetest/backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-PYTHONPATH=. python scripts/build_grid.py --resolution 0.25 --coarse-resolution 2.0
-pytest -q
-```
-
-This also writes `frontend/public/data/grid_manifest.json` that the frontend reads at runtime.
-
-If the environment cannot download Natural Earth directly, set:
-
-```bash
-export NATURAL_EARTH_LAND_SHP=/absolute/path/to/ne_50m_land.shp
-```
-
-Frontend setup + run:
-
-```bash
-cd /home/runner/work/globetest/globetest/frontend
+cd frontend
 npm install
 npm run dev
 ```
 
-Then open `http://localhost:5173`.
-
-## Scope
-
-This prototype intentionally does **not** include SST, MLD, currents, fluxes, forecasting, or climate-model logic yet.
+Open `http://localhost:5173`.

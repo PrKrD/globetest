@@ -1,19 +1,14 @@
 # Backend
 
-Builds a configurable global latitude-longitude grid and center-point land/sea mask.
-
-## Quick start
+Transforms the Maximenko mean dynamic-topography NetCDF product into the globe's
+native 0.5° land/sea mask and geostrophic-velocity dataset.
 
 ```bash
-cd /home/runner/work/globetest/globetest/backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-PYTHONPATH=. python scripts/build_grid.py
+cd backend
+python3 -m pip install -r requirements.txt
+PYTHONPATH=. python3 scripts/build_dyntopo.py
+python3 -m pytest -q
 ```
 
-Outputs:
-- `backend/data/mask_u8.bin` (0=ocean, 1=land)
-- `backend/data/grid_meta.json`
-- `frontend/public/data/coarse_grid_<resolution>.json`
-- `frontend/public/data/grid_manifest.json` (points frontend to active coarse file)
+The raw source is `data/Maximenko_dyntopo.nc`; the generated browser dataset is
+`frontend/public/data/maximenko_slope.json`.
