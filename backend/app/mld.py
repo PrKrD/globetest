@@ -35,6 +35,81 @@ class RegriddedMixedLayerDepth:
     valid: np.ndarray
 
 
+def regrid_ocean_mask_by_overlap(
+    source_ocean: np.ndarray,
+    source_longitude_deg: np.ndarray,
+    source_latitude_deg: np.ndarray,
+    target_longitude_deg: np.ndarray,
+    target_latitude_deg: np.ndarray,
+) -> np.ndarray:
+    """Remap a regular land/ocean mask by exact spherical overlap area.
+
+    A target cell is ocean when at least half of its spherical area overlaps
+    source ocean. Longitude is periodic and a 50/50 tie is classified as ocean.
+    """
+    source_mask = np.asarray(source_ocean, dtype=bool)
+    source_lon = np.asarray(source_longitude_deg, dtype=np.float64)
+    source_lat = np.asarray(source_latitude_deg, dtype=np.float64)
+    target_lon = np.asarray(target_longitude_deg, dtype=np.float64)
+    target_lat = np.asarray(target_latitude_deg, dtype=np.float64)
+    if source_mask.shape != (source_lat.size, source_lon.size):
+        raise ValueError("Source ocean mask does not match its coordinates")
+    if source_lon.size < 2 or source_lat.size < 2 or target_lon.size < 2 or target_lat.size < 2:
+        raise ValueError("Ocean-mask remapping requires at least two coordinates per axis")
+    for values, name in (
+        (source_lon, "source longitude"),
+        (source_lat, "source latitude"),
+        (target_lon, "target longitude"),
+        (target_lat, "target latitude"),
+    ):
+        spacing = np.diff(values)
+        if not np.all(spacing > 0.0) or not np.allclose(spacing, spacing[0]):
+            raise ValueError(f"Expected {name} to be strictly increasing and regular")
+    if not np.isclose(source_lon[-1] - source_lon[0] + np.diff(source_lon)[0], 360.0):
+        raise ValueError("Source longitude must cover one periodic revolution")
+    if not np.isclose(target_lon[-1] - target_lon[0] + np.diff(target_lon)[0], 360.0):
+        raise ValueError("Target longitude must cover one periodic revolution")
+
+    source_lon_step = float(np.diff(source_lon)[0])
+    source_lat_step = float(np.diff(source_lat)[0])
+    target_lon_step = float(np.diff(target_lon)[0])
+    target_lat_step = float(np.diff(target_lat)[0])
+    source_lat_edges = np.concatenate(
+        ([source_lat[0] - source_lat_step / 2.0], source_lat + source_lat_step / 2.0)
+    )
+    target_lat_edges = np.concatenate(
+        ([target_lat[0] - target_lat_step / 2.0], target_lat + target_lat_step / 2.0)
+    )
+    if target_lat_edges[0] < source_lat_edges[0] or target_lat_edges[-1] > source_lat_edges[-1]:
+        raise ValueError("Target latitude cells extend beyond the source mask")
+
+    # Spherical rectangle area is separable into longitude overlap and the
+    # difference of sine(latitude) at the overlap edges.
+    latitude_overlap = np.zeros((target_lat.size, source_lat.size), dtype=np.float64)
+    for i in range(target_lat.size):
+        lower = np.maximum(target_lat_edges[i], source_lat_edges[:-1])
+        upper = np.minimum(target_lat_edges[i + 1], source_lat_edges[1:])
+        overlap = upper > lower
+        latitude_overlap[i, overlap] = (
+            np.sin(np.deg2rad(upper[overlap])) - np.sin(np.deg2rad(lower[overlap]))
+        )
+
+    longitude_overlap = np.zeros((target_lon.size, source_lon.size), dtype=np.float64)
+    source_start = source_lon - source_lon_step / 2.0
+    source_end = source_lon + source_lon_step / 2.0
+    for j, center in enumerate(target_lon):
+        target_start = center - target_lon_step / 2.0
+        target_end = center + target_lon_step / 2.0
+        for shift in (-360.0, 0.0, 360.0):
+            lower = np.maximum(target_start, source_start + shift)
+            upper = np.minimum(target_end, source_end + shift)
+            longitude_overlap[j] += np.maximum(upper - lower, 0.0)
+
+    ocean_area = latitude_overlap @ source_mask.astype(np.float64) @ longitude_overlap.T
+    total_area = latitude_overlap.sum(axis=1)[:, None] * longitude_overlap.sum(axis=1)[None, :]
+    return ocean_area >= 0.5 * total_area
+
+
 def _require_regular_coordinate(values: np.ndarray, expected_size: int, name: str) -> None:
     if values.ndim != 1 or values.size != expected_size:
         raise ValueError(f"Expected {name} to contain {expected_size} coordinates")

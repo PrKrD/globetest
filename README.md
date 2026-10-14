@@ -21,10 +21,11 @@ common display grid for both products.
   the Maximenko grid. No additional Gaussian smoothing is applied because the
   source climatology has already been objectively mapped.
 - **Geostrophic subduction:** the signed diagnostic is
-  `S_geo = -div(H v_geo)`, evaluated with the metric-correct spherical vector
-  divergence. Positive values indicate horizontal transport convergence and a
-  downward contribution; negative values indicate divergence and an upward
-  contribution. Values are in m/s and use the maximum MLD described above.
+  `S_geo = -div(H v_geo)`, evaluated with a conservative finite-volume
+  spherical divergence. Positive values indicate horizontal transport
+  convergence and a downward contribution; negative values indicate divergence
+  and an upward contribution. Values are in m/s and use the maximum MLD
+  described above.
 - **Controls:** subduction, H, and velocity have mutually exclusive switches,
   with velocity on by default. Subduction and velocity each have an independent,
   default-on **Use experimental equator** sub-toggle. Turning one off paints the
@@ -39,11 +40,8 @@ contributing source cell lacks a month, the lowest contributor count is shown
 as "at least X/12 months" and marked incomplete. Subduction reports its sign
 meaning and whether it inherits an experimental equatorial velocity estimate.
 
-For subduction, longitude wraps periodically. Each flux derivative uses a
-centered difference when both neighbours are available and a one-sided
-difference when only one is available. A cell is unavailable unless both the
-east-west and north-south derivatives can be formed; a single directional term
-is never displayed as the total divergence.
+Detailed reconstruction, finite-volume, masking, and boundary methods are
+documented in [the backend guide](backend/README.md).
 
 ## Build the dataset
 
@@ -51,17 +49,6 @@ The raw sources must be at:
 
 - `backend/data/Maximenko_dyntopo.nc`
 - `backend/data/mld_dr003_ref10m_v2023.nc`
-
-### Local macOS/Homebrew note
-
-This project uses the global Python environment rather than a virtual environment.
-On the local macOS/Homebrew machine, the working Homebrew Git executable is:
-
-```text
-/opt/homebrew/Cellar/git/2.56.0_1/bin/git
-```
-
-Use that path if the macOS Command Line Tools installation reports as missing.
 
 ```bash
 cd backend
@@ -87,11 +74,9 @@ running local viewer keeps its prior dataset until a new build completes.
   [Lagerloef et al. (1999)](https://doi.org/10.1029/1999JC900197). This viewer
   uses a local cubic smoothing spline to obtain the needed first and second
   topography derivatives before applying that transition.
-- **Subduction calculation:** on longitude `lambda` and latitude `phi`, the
-  implementation evaluates
-  `-[d(Hu)/d(lambda) + d(Hv cos(phi))/d(phi)] / [R cos(phi)]`. It is a diagnostic
-  combining mean geostrophic velocity with maximum climatological MLD, not a
-  seasonally resolved subduction estimate.
+- **Subduction calculation:** this is a conservative diagnostic combining mean
+  geostrophic velocity with maximum climatological MLD, not a seasonally
+  resolved subduction estimate. See the [backend method](backend/README.md).
 - **Source MLD:** the bundled `mld_dr003_ref10m_v2023.nc` is the 2023 monthly
   climatology described by
   [de Boyer Montégut et al., SEANOE](https://doi.org/10.17882/91774). It maps
@@ -101,34 +86,14 @@ running local viewer keeps its prior dataset until a new build completes.
   visible in hover details. Bilinear regridding improves display continuity but
   does not create genuine 0.5° observations.
 
-## Equatorial diagnostic status
+## Diagnostic status
 
-The equatorial velocity and subduction fields are experimental and have not yet
-been independently or physically validated. The current velocity reconstruction
-fits cubic smoothing splines to contiguous MDT samples within ±3.5°. At 0° it
-uses the equatorial β-plane curvature relations; from the 0.25° β-plane core to
-±3° it blends smoothly into ordinary geostrophic velocity. Ordinary geostrophy
-is retained outside that transition.
-
-Diagnostics over 10°S–10°N show that the mostly positive subduction signal in
-the transition band is strongly influenced by the spatial gradient of this
-blending weight. The exact discrete blend-gradient contribution has an
-area-weighted transition-band mean of `1.386e-5 m/s`, close to the analytic
-product-rule estimate of `1.337e-5 m/s`, while the resulting total mean is
-`9.210e-6 m/s`. The broad positive mean persists across the tested fit widths,
-spline smoothing parameters, and blend widths, but many local anomalies depend
-strongly on those numerical choices. These results must therefore be treated as
-diagnostic rather than established physical subduction.
-
-The current centered/one-sided derivative scheme is also not a conservative
-finite-volume operator. Its global area integral does not close exactly against
-estimated transport through coastline/no-data and outer-domain boundaries; the
-diagnostic closure residual is about 40% of the larger budget term. A future
-revision will replace this derivative with a conservative finite-volume flux
-calculation and then validate the equatorial velocities independently. No
-equatorial values have been forced to zero or smoothed away. See the complete
-[diagnostic report](backend/diagnostics/equatorial_subduction/REPORT.md) and its
-associated plots and CSV summaries.
+The equatorial velocity and inherited subduction estimates remain experimental
+and require independent physical validation. The diagnostic workflow tests
+parameter sensitivity, separates the blend-gradient contribution, verifies
+finite-volume conservation, and compares the current operator with the retired
+centered/one-sided stencil. Its generated reports, tables, and figures are local
+artifacts; reproduction instructions are in [the backend guide](backend/README.md).
 
 ## Run the globe
 

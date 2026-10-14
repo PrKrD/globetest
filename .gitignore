@@ -19,3 +19,4 @@ dist/
 
 # Generated data artifacts
 frontend/public/data/*.json
+backend/diagnostics/

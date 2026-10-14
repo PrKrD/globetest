@@ -2,10 +2,17 @@ from pathlib import Path
 
 import numpy as np
 
-from app.mld import load_mld, maximum_mld, regrid_maximum_mld
+from app.dyntopo import load_maximenko
+from app.mld import (
+    load_mld,
+    maximum_mld,
+    regrid_maximum_mld,
+    regrid_ocean_mask_by_overlap,
+)
 
 
 DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "mld_dr003_ref10m_v2023.nc"
+TOPOGRAPHY_PATH = Path(__file__).resolve().parents[1] / "data" / "Maximenko_dyntopo.nc"
 
 
 def test_load_mld_filters_fill_values_and_source_land() -> None:
@@ -70,3 +77,44 @@ def test_regrid_renormalizes_missing_corners_and_uses_minimum_coverage() -> None
     assert result.valid.tolist() == [[True, False]]
     assert np.isnan(result.maximum_m[0, 1])
     assert result.month_count_min[0, 1] == 0
+
+
+def test_ocean_mask_overlap_majority_keeps_ties_as_ocean() -> None:
+    source_longitude = np.array([-135.0, -45.0, 45.0, 135.0])
+    source_latitude = np.array([-45.0, 45.0])
+    source_ocean = np.array(
+        [
+            [True, False, False, False],
+            [True, False, False, False],
+        ]
+    )
+    target_longitude = np.arange(-180.0, 180.0, 45.0)
+    target_latitude = np.array([-67.5, -22.5, 22.5, 67.5])
+
+    result = regrid_ocean_mask_by_overlap(
+        source_ocean,
+        source_longitude,
+        source_latitude,
+        target_longitude,
+        target_latitude,
+    )
+
+    # -90 degrees straddles the ocean and land source cells equally.
+    tie_column = int(np.flatnonzero(target_longitude == -90.0)[0])
+    assert np.all(result[:, tie_column])
+    assert np.all(result[:, target_longitude == -135.0])
+    assert not np.any(result[:, target_longitude == -45.0])
+
+
+def test_remapped_source_mask_preserves_all_valid_transport_cells() -> None:
+    topography = load_maximenko(str(TOPOGRAPHY_PATH))
+    mld = load_mld(str(DATA_PATH))
+    physical_ocean = regrid_ocean_mask_by_overlap(
+        mld.source_ocean,
+        mld.longitude_deg,
+        mld.latitude_deg,
+        topography.longitude_deg,
+        topography.latitude_deg,
+    )
+
+    assert np.all(physical_ocean[topography.valid])
