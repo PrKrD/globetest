@@ -19,6 +19,11 @@ export class Tooltip {
       : cell.equatorial_uncertainty
         ? "equator — unavailable (Coriolis term is zero)"
         : "standard";
+    const mld = cell.has_mld ? `${cell.mld_max_m!.toFixed(1)} m` : "unavailable";
+    const monthCount = cell.mld_month_count_min ?? 0;
+    const coverage = cell.has_mld
+      ? `at least ${monthCount}/12 months${monthCount < 12 ? " — incomplete" : ""}`
+      : "unavailable";
     this.el.innerHTML = `
       <div><strong>Cell:</strong> ${cell.id}</div>
       <div><strong>Lat:</strong> ${cell.clat.toFixed(3)}°</div>
@@ -28,6 +33,11 @@ export class Tooltip {
         <strong>Geostrophic velocity</strong>
         <div><strong>Speed:</strong> ${velocity}${cell.has_velocity ? " m/s" : ""}</div>
         <div><strong>Confidence:</strong> ${confidence}</div>
+      </div>
+      <div class="tooltip-section">
+        <strong>Maximum mixed-layer depth (H)</strong>
+        <div><strong>Depth:</strong> ${mld}</div>
+        <div><strong>Source coverage:</strong> ${coverage}</div>
       </div>
     `;
     const margin = 10;

@@ -35,7 +35,7 @@ body,
 
 .tooltip-section { margin-top: 5px; padding-top: 5px; border-top: 1px solid rgba(255, 255, 255, 0.25); }
 
-.velocity-controls {
+.layer-controls {
   position: absolute;
   z-index: 110;
   left: 16px;
@@ -49,6 +49,30 @@ body,
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
   font-size: 12px;
 }
+
+.control-product { margin-top: 4px; padding-top: 8px; border-top: 1px solid rgba(168, 215, 240, 0.2); }
+
+.layer-legend {
+  position: absolute;
+  z-index: 105;
+  left: 16px;
+  bottom: 150px;
+  width: 205px;
+  padding: 9px 12px;
+  border: 1px solid rgba(168, 215, 240, 0.32);
+  border-radius: 8px;
+  background: rgba(7, 21, 35, 0.88);
+  color: #edf8ff;
+  box-sizing: border-box;
+  font-size: 10px;
+}
+
+.legend-title { margin-bottom: 6px; font-size: 11px; font-weight: 500; }
+.legend-bar { height: 9px; border-radius: 3px; }
+.legend-velocity { background: linear-gradient(90deg, #123b7a 0%, #24b6b0 55%, #f2d13d 100%); }
+.legend-mld { background: linear-gradient(90deg, #440154 0%, #21918c 50%, #fde725 100%); }
+.legend-labels { display: flex; justify-content: space-between; margin-top: 3px; font-variant-numeric: tabular-nums; }
+.legend-note { margin-top: 4px; color: #bdd4e2; font-size: 9px; }
 
 .control-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 5px 0; }
 .control-master { font-weight: 500; }

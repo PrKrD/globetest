@@ -5,7 +5,8 @@ import { FRONTEND_DYNTOPO_DATA_URL } from "./config";
 import { GridLayer } from "./globe/GridLayer";
 import { GridPicking } from "./globe/GridPicking";
 import { Tooltip } from "./ui/Tooltip";
-import { VelocityControls } from "./ui/VelocityControls";
+import { LayerControls } from "./ui/LayerControls";
+import { LayerLegend } from "./ui/LayerLegend";
 import "./style.css";
 
 async function bootstrap(): Promise<void> {
@@ -33,8 +34,10 @@ async function bootstrap(): Promise<void> {
   await gridLayer.loadFromUrl(FRONTEND_DYNTOPO_DATA_URL);
 
   const tooltip = new Tooltip("tooltip");
-  new VelocityControls((state) => {
-    gridLayer.setVelocityVisualization(state.enabled, state.equatorialEnabled);
+  const legend = new LayerLegend("layerLegend");
+  new LayerControls((state) => {
+    gridLayer.setVisualization(state.mode, state.equatorialEnabled);
+    legend.show(state.mode, gridLayer.getDataset());
   });
 
   const picking = new GridPicking(viewer, gridLayer, (cell, x, y) => {

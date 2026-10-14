@@ -33,6 +33,9 @@ export interface GridCell {
   velocity_speed_m_per_s?: number;
   equatorial_uncertainty?: number;
   equatorial_estimate?: number;
+  has_mld?: number;
+  mld_max_m?: number;
+  mld_month_count_min?: number;
 }
 
 export interface GridDataset {
@@ -41,8 +44,11 @@ export interface GridDataset {
   n_lon: number;
   dataset_type?: string;
   velocity_p98_m_per_s?: number;
+  mld_max_p98_m?: number;
   cells: GridCell[];
 }
+
+export type VisualizationMode = "none" | "velocity" | "mld";
 
 const BASE_CELL_HEIGHT_METERS = 5.0;
 const GRID_LINE_HEIGHT_METERS = 8.0;
@@ -52,17 +58,21 @@ const EQUATORIAL_CAUTION_COLOR = Color.fromCssColorString("#d94a43");
 const VELOCITY_LOW_COLOR = Color.fromCssColorString("#123b7a");
 const VELOCITY_MIDDLE_COLOR = Color.fromCssColorString("#24b6b0");
 const VELOCITY_HIGH_COLOR = Color.fromCssColorString("#f2d13d");
+const MLD_LOW_COLOR = Color.fromCssColorString("#440154");
+const MLD_MIDDLE_COLOR = Color.fromCssColorString("#21918c");
+const MLD_HIGH_COLOR = Color.fromCssColorString("#fde725");
 
 export class GridLayer {
   private scene: Scene;
   private landPrimitive: Primitive | undefined;
   private velocityPrimitive: Primitive | undefined;
   private cautionedVelocityPrimitive: Primitive | undefined;
+  private mldPrimitive: Primitive | undefined;
   private flatOceanPrimitive: Primitive | undefined;
   private boundaryPrimitive: Primitive | undefined;
   private dataset: GridDataset | null = null;
   private cellsById = new Map<number, GridCell>();
-  private showVelocity = true;
+  private visualizationMode: VisualizationMode = "velocity";
   private showEquatorialEstimates = true;
 
   constructor(viewer: Viewer) {
@@ -82,8 +92,8 @@ export class GridLayer {
     }
   }
 
-  setVelocityVisualization(enabled: boolean, equatorialEnabled: boolean): void {
-    this.showVelocity = enabled;
+  setVisualization(mode: VisualizationMode, equatorialEnabled: boolean): void {
+    this.visualizationMode = mode;
     this.showEquatorialEstimates = equatorialEnabled;
     this.updatePrimitiveVisibility();
   }
@@ -93,6 +103,7 @@ export class GridLayer {
     const landInstances: GeometryInstance[] = [];
     const velocityInstances: GeometryInstance[] = [];
     const cautionedVelocityInstances: GeometryInstance[] = [];
+    const mldInstances: GeometryInstance[] = [];
     const flatOceanInstances: GeometryInstance[] = [];
 
     for (const cell of this.dataset.cells) {
@@ -109,17 +120,20 @@ export class GridLayer {
           cell.equatorial_estimate ? EQUATORIAL_CAUTION_COLOR : velocityColor,
         ),
       );
+      mldInstances.push(this.buildColoredCellInstance(cell, this.mldColorForCell(cell)));
       flatOceanInstances.push(this.buildColoredCellInstance(cell, OCEAN_CELL_COLOR));
     }
 
     this.landPrimitive = this.buildPrimitive(landInstances);
     this.velocityPrimitive = this.buildPrimitive(velocityInstances);
     this.cautionedVelocityPrimitive = this.buildPrimitive(cautionedVelocityInstances);
+    this.mldPrimitive = this.buildPrimitive(mldInstances);
     this.flatOceanPrimitive = this.buildPrimitive(flatOceanInstances);
 
     this.scene.primitives.add(this.landPrimitive);
     this.scene.primitives.add(this.velocityPrimitive);
     this.scene.primitives.add(this.cautionedVelocityPrimitive);
+    this.scene.primitives.add(this.mldPrimitive);
     this.scene.primitives.add(this.flatOceanPrimitive);
     this.updatePrimitiveVisibility();
   }
@@ -199,11 +213,30 @@ export class GridLayer {
       : Color.lerp(VELOCITY_MIDDLE_COLOR, VELOCITY_HIGH_COLOR, (normalized - 0.55) / 0.45, new Color());
   }
 
+  private mldColorForCell(cell: GridCell): Color {
+    if (!cell.has_mld || cell.mld_max_m === undefined || !this.dataset?.mld_max_p98_m) {
+      return OCEAN_CELL_COLOR;
+    }
+    const normalized = Math.sqrt(Math.min(cell.mld_max_m / this.dataset.mld_max_p98_m, 1));
+    return normalized < 0.5
+      ? Color.lerp(MLD_LOW_COLOR, MLD_MIDDLE_COLOR, normalized / 0.5, new Color())
+      : Color.lerp(MLD_MIDDLE_COLOR, MLD_HIGH_COLOR, (normalized - 0.5) / 0.5, new Color());
+  }
+
   private updatePrimitiveVisibility(): void {
-    if (!this.velocityPrimitive || !this.cautionedVelocityPrimitive || !this.flatOceanPrimitive) return;
-    this.velocityPrimitive.show = this.showVelocity && this.showEquatorialEstimates;
-    this.cautionedVelocityPrimitive.show = this.showVelocity && !this.showEquatorialEstimates;
-    this.flatOceanPrimitive.show = !this.showVelocity;
+    if (
+      !this.velocityPrimitive ||
+      !this.cautionedVelocityPrimitive ||
+      !this.mldPrimitive ||
+      !this.flatOceanPrimitive
+    ) {
+      return;
+    }
+    const showVelocity = this.visualizationMode === "velocity";
+    this.velocityPrimitive.show = showVelocity && this.showEquatorialEstimates;
+    this.cautionedVelocityPrimitive.show = showVelocity && !this.showEquatorialEstimates;
+    this.mldPrimitive.show = this.visualizationMode === "mld";
+    this.flatOceanPrimitive.show = this.visualizationMode === "none";
   }
 
   private withIndices(payload: GridDataset): GridDataset {
