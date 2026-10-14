@@ -36,7 +36,11 @@ async function bootstrap(): Promise<void> {
   const tooltip = new Tooltip("tooltip");
   const legend = new LayerLegend("layerLegend");
   new LayerControls((state) => {
-    gridLayer.setVisualization(state.mode, state.equatorialEnabled);
+    gridLayer.setVisualization(
+      state.mode,
+      state.equatorialEnabled,
+      state.subductionEquatorialEnabled,
+    );
     legend.show(state.mode, gridLayer.getDataset());
   });
 

@@ -1,4 +1,4 @@
-"""Transform Maximenko mean dynamic topography into a globe-ready slope dataset."""
+"""Build the globe-ready velocity and maximum mixed-layer-depth maps."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from app.dyntopo import (
     spherical_gradient,
 )
 from app.mld import load_mld, maximum_mld, regrid_maximum_mld
+from app.subduction import geostrophic_subduction_rate
 
 
 GRAVITY_M_PER_S2 = 9.80665
@@ -28,7 +29,9 @@ BETA_PLANE_BLEND_LATITUDE_DEG = 3.0
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build the Maximenko slope globe dataset")
+    parser = argparse.ArgumentParser(
+        description="Build the combined ocean velocity and maximum-MLD globe dataset"
+    )
     parser.add_argument("--input", type=Path, default=DATA_DIR / "Maximenko_dyntopo.nc")
     parser.add_argument("--mld-input", type=Path, default=DATA_DIR / "mld_dr003_ref10m_v2023.nc")
     parser.add_argument("--output", type=Path, default=FRONTEND_PUBLIC_DATA_DIR / "maximenko_slope.json")
@@ -100,6 +103,14 @@ def main() -> None:
     )
     valid_velocity = np.isfinite(velocity_east) & np.isfinite(velocity_north)
     velocity_speed = np.hypot(velocity_east, velocity_north)
+    subduction = geostrophic_subduction_rate(
+        regridded_mld.maximum_m,
+        velocity_east,
+        velocity_north,
+        source.longitude_deg,
+        source.latitude_deg,
+        regridded_mld.valid & valid_velocity,
+    )
     # Keep the ordinary-ocean colour scale stable: the experimental values
     # grow rapidly as f approaches zero and would otherwise flatten detail in
     # the rest of the map.
@@ -108,6 +119,9 @@ def main() -> None:
     ]
     velocity_p98 = float(np.nanpercentile(reference_velocity, 98.0))
     mld_max_p98 = float(np.nanpercentile(regridded_mld.maximum_m[regridded_mld.valid], 98.0))
+    subduction_abs_p98 = float(
+        np.nanpercentile(np.abs(subduction.rate_m_per_s[subduction.valid]), 98.0)
+    )
     lat_edges = coordinate_edges(source.latitude_deg)
     lon_step = float(np.median(np.diff(source.longitude_deg)))
 
@@ -121,6 +135,7 @@ def main() -> None:
             equatorial_uncertainty = int(abs(latitude) < BETA_PLANE_BLEND_LATITUDE_DEG)
             equatorial_estimate = int(equatorial_uncertainty and has_velocity)
             has_mld = int(regridded_mld.valid[i, j])
+            has_subduction = int(subduction.valid[i, j])
             cells.append(
                 {
                     "id": i * n_lon + j,
@@ -138,21 +153,28 @@ def main() -> None:
                     "has_mld": has_mld,
                     "mld_max_m": rounded(regridded_mld.maximum_m[i, j], 3) if has_mld else 0.0,
                     "mld_month_count_min": int(regridded_mld.month_count_min[i, j]),
+                    "has_subduction": has_subduction,
+                    "subduction_m_per_s": rounded(subduction.rate_m_per_s[i, j], 12)
+                    if has_subduction
+                    else 0.0,
                 }
             )
 
     payload = {
-        "dataset_type": "maximenko_geostrophic_velocity",
-        "units": {"velocity": "m/s", "mld_max": "m"},
+        "dataset_type": "maximenko_ocean_diagnostics",
+        "units": {"velocity": "m/s", "mld_max": "m", "subduction": "m/s"},
         "resolution_deg": lon_step,
         "n_lat": int(source.latitude_deg.size),
         "n_lon": int(n_lon),
         "velocity_p98_m_per_s": rounded(velocity_p98, 6),
         "mld_max_p98_m": rounded(mld_max_p98, 3),
+        "subduction_abs_p98_m_per_s": rounded(subduction_abs_p98, 12),
         "mld_source_resolution_deg": 1.0,
         "mld_temporal_statistic": "maximum_of_available_monthly_climatologies",
         "mld_regridding_method": "periodic_mask_aware_bilinear",
         "equatorial_method": "cubic_spline_beta_plane_blended_to_f_plane",
+        "subduction_method": "negative_spherical_divergence_of_mld_times_geostrophic_velocity",
+        "subduction_missing_neighbour_policy": "centered_else_one_sided_require_both_directions",
         "beta_plane_core_latitude_deg": BETA_PLANE_CORE_LATITUDE_DEG,
         "beta_plane_blend_latitude_deg": BETA_PLANE_BLEND_LATITUDE_DEG,
         "cells": cells,
@@ -168,6 +190,10 @@ def main() -> None:
     print(f"Native grid: {source.latitude_deg.size} x {n_lon} at {lon_step:g}°")
     print(f"Velocity p98: {velocity_p98:.3f} m/s; valid velocity cells: {int(valid_velocity.sum()):,}")
     print(f"Maximum MLD p98: {mld_max_p98:.1f} m; valid MLD cells: {int(regridded_mld.valid.sum()):,}")
+    print(
+        f"Subduction |p98|: {subduction_abs_p98:.3e} m/s; "
+        f"valid subduction cells: {int(subduction.valid.sum()):,}"
+    )
 
 
 if __name__ == "__main__":

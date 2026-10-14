@@ -36,6 +36,8 @@ export interface GridCell {
   has_mld?: number;
   mld_max_m?: number;
   mld_month_count_min?: number;
+  has_subduction?: number;
+  subduction_m_per_s?: number;
 }
 
 export interface GridDataset {
@@ -45,10 +47,11 @@ export interface GridDataset {
   dataset_type?: string;
   velocity_p98_m_per_s?: number;
   mld_max_p98_m?: number;
+  subduction_abs_p98_m_per_s?: number;
   cells: GridCell[];
 }
 
-export type VisualizationMode = "none" | "velocity" | "mld";
+export type VisualizationMode = "none" | "velocity" | "mld" | "subduction";
 
 const BASE_CELL_HEIGHT_METERS = 5.0;
 const GRID_LINE_HEIGHT_METERS = 8.0;
@@ -61,6 +64,9 @@ const VELOCITY_HIGH_COLOR = Color.fromCssColorString("#f2d13d");
 const MLD_LOW_COLOR = Color.fromCssColorString("#440154");
 const MLD_MIDDLE_COLOR = Color.fromCssColorString("#21918c");
 const MLD_HIGH_COLOR = Color.fromCssColorString("#fde725");
+const SUBDUCTION_NEGATIVE_COLOR = Color.fromCssColorString("#5e3c99");
+const SUBDUCTION_ZERO_COLOR = Color.fromCssColorString("#ffffbf");
+const SUBDUCTION_POSITIVE_COLOR = Color.fromCssColorString("#1b9e77");
 
 export class GridLayer {
   private scene: Scene;
@@ -68,12 +74,15 @@ export class GridLayer {
   private velocityPrimitive: Primitive | undefined;
   private cautionedVelocityPrimitive: Primitive | undefined;
   private mldPrimitive: Primitive | undefined;
+  private subductionPrimitive: Primitive | undefined;
+  private cautionedSubductionPrimitive: Primitive | undefined;
   private flatOceanPrimitive: Primitive | undefined;
   private boundaryPrimitive: Primitive | undefined;
   private dataset: GridDataset | null = null;
   private cellsById = new Map<number, GridCell>();
   private visualizationMode: VisualizationMode = "velocity";
   private showEquatorialEstimates = true;
+  private showEquatorialSubduction = true;
 
   constructor(viewer: Viewer) {
     this.scene = viewer.scene;
@@ -92,9 +101,14 @@ export class GridLayer {
     }
   }
 
-  setVisualization(mode: VisualizationMode, equatorialEnabled: boolean): void {
+  setVisualization(
+    mode: VisualizationMode,
+    equatorialEnabled: boolean,
+    subductionEquatorialEnabled: boolean,
+  ): void {
     this.visualizationMode = mode;
     this.showEquatorialEstimates = equatorialEnabled;
+    this.showEquatorialSubduction = subductionEquatorialEnabled;
     this.updatePrimitiveVisibility();
   }
 
@@ -104,6 +118,8 @@ export class GridLayer {
     const velocityInstances: GeometryInstance[] = [];
     const cautionedVelocityInstances: GeometryInstance[] = [];
     const mldInstances: GeometryInstance[] = [];
+    const subductionInstances: GeometryInstance[] = [];
+    const cautionedSubductionInstances: GeometryInstance[] = [];
     const flatOceanInstances: GeometryInstance[] = [];
 
     for (const cell of this.dataset.cells) {
@@ -121,6 +137,16 @@ export class GridLayer {
         ),
       );
       mldInstances.push(this.buildColoredCellInstance(cell, this.mldColorForCell(cell)));
+      const subductionColor = this.subductionColorForCell(cell);
+      subductionInstances.push(this.buildColoredCellInstance(cell, subductionColor));
+      cautionedSubductionInstances.push(
+        this.buildColoredCellInstance(
+          cell,
+          cell.equatorial_estimate && cell.has_subduction
+            ? EQUATORIAL_CAUTION_COLOR
+            : subductionColor,
+        ),
+      );
       flatOceanInstances.push(this.buildColoredCellInstance(cell, OCEAN_CELL_COLOR));
     }
 
@@ -128,12 +154,16 @@ export class GridLayer {
     this.velocityPrimitive = this.buildPrimitive(velocityInstances);
     this.cautionedVelocityPrimitive = this.buildPrimitive(cautionedVelocityInstances);
     this.mldPrimitive = this.buildPrimitive(mldInstances);
+    this.subductionPrimitive = this.buildPrimitive(subductionInstances);
+    this.cautionedSubductionPrimitive = this.buildPrimitive(cautionedSubductionInstances);
     this.flatOceanPrimitive = this.buildPrimitive(flatOceanInstances);
 
     this.scene.primitives.add(this.landPrimitive);
     this.scene.primitives.add(this.velocityPrimitive);
     this.scene.primitives.add(this.cautionedVelocityPrimitive);
     this.scene.primitives.add(this.mldPrimitive);
+    this.scene.primitives.add(this.subductionPrimitive);
+    this.scene.primitives.add(this.cautionedSubductionPrimitive);
     this.scene.primitives.add(this.flatOceanPrimitive);
     this.updatePrimitiveVisibility();
   }
@@ -205,8 +235,13 @@ export class GridLayer {
   }
 
   private velocityColorForCell(cell: GridCell): Color {
-    if (cell.equatorial_uncertainty && !cell.has_velocity) return EQUATORIAL_CAUTION_COLOR;
-    if (!cell.has_velocity || cell.velocity_speed_m_per_s === undefined || !this.dataset?.velocity_p98_m_per_s) return OCEAN_CELL_COLOR;
+    if (
+      !cell.has_velocity ||
+      cell.velocity_speed_m_per_s === undefined ||
+      !this.dataset?.velocity_p98_m_per_s
+    ) {
+      return EQUATORIAL_CAUTION_COLOR;
+    }
     const normalized = Math.sqrt(Math.min(cell.velocity_speed_m_per_s / this.dataset.velocity_p98_m_per_s, 1));
     return normalized < 0.55
       ? Color.lerp(VELOCITY_LOW_COLOR, VELOCITY_MIDDLE_COLOR, normalized / 0.55, new Color())
@@ -223,11 +258,24 @@ export class GridLayer {
       : Color.lerp(MLD_MIDDLE_COLOR, MLD_HIGH_COLOR, (normalized - 0.5) / 0.5, new Color());
   }
 
+  private subductionColorForCell(cell: GridCell): Color {
+    const limit = this.dataset?.subduction_abs_p98_m_per_s;
+    if (!cell.has_subduction || cell.subduction_m_per_s === undefined || !limit) {
+      return EQUATORIAL_CAUTION_COLOR;
+    }
+    const normalized = Math.max(-1, Math.min(cell.subduction_m_per_s / limit, 1));
+    return normalized < 0
+      ? Color.lerp(SUBDUCTION_NEGATIVE_COLOR, SUBDUCTION_ZERO_COLOR, normalized + 1, new Color())
+      : Color.lerp(SUBDUCTION_ZERO_COLOR, SUBDUCTION_POSITIVE_COLOR, normalized, new Color());
+  }
+
   private updatePrimitiveVisibility(): void {
     if (
       !this.velocityPrimitive ||
       !this.cautionedVelocityPrimitive ||
       !this.mldPrimitive ||
+      !this.subductionPrimitive ||
+      !this.cautionedSubductionPrimitive ||
       !this.flatOceanPrimitive
     ) {
       return;
@@ -236,6 +284,9 @@ export class GridLayer {
     this.velocityPrimitive.show = showVelocity && this.showEquatorialEstimates;
     this.cautionedVelocityPrimitive.show = showVelocity && !this.showEquatorialEstimates;
     this.mldPrimitive.show = this.visualizationMode === "mld";
+    const showSubduction = this.visualizationMode === "subduction";
+    this.subductionPrimitive.show = showSubduction && this.showEquatorialSubduction;
+    this.cautionedSubductionPrimitive.show = showSubduction && !this.showEquatorialSubduction;
     this.flatOceanPrimitive.show = this.visualizationMode === "none";
   }
 

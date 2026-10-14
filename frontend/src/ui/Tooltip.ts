@@ -24,6 +24,21 @@ export class Tooltip {
     const coverage = cell.has_mld
       ? `at least ${monthCount}/12 months${monthCount < 12 ? " — incomplete" : ""}`
       : "unavailable";
+    const subduction = cell.has_subduction
+      ? `${cell.subduction_m_per_s!.toExponential(3)} m/s`
+      : "unavailable";
+    const subductionMeaning = cell.has_subduction
+      ? cell.subduction_m_per_s! > 0
+        ? "downward contribution (convergence)"
+        : cell.subduction_m_per_s! < 0
+          ? "upward contribution (divergence)"
+          : "neutral"
+      : "requires both horizontal flux derivatives";
+    const subductionConfidence = cell.equatorial_estimate && cell.has_subduction
+      ? "experimental equatorial velocity"
+      : cell.has_subduction
+        ? "standard"
+        : "unavailable";
     this.el.innerHTML = `
       <div><strong>Cell:</strong> ${cell.id}</div>
       <div><strong>Lat:</strong> ${cell.clat.toFixed(3)}°</div>
@@ -39,17 +54,23 @@ export class Tooltip {
         <div><strong>Depth:</strong> ${mld}</div>
         <div><strong>Source coverage:</strong> ${coverage}</div>
       </div>
+      <div class="tooltip-section">
+        <strong>Geostrophic subduction</strong>
+        <div><strong>Rate:</strong> ${subduction}</div>
+        <div><strong>Meaning:</strong> ${subductionMeaning}</div>
+        <div><strong>Confidence:</strong> ${subductionConfidence}</div>
+      </div>
     `;
+    this.el.classList.remove("hidden");
     const margin = 10;
-    const tooltipWidth = this.el.offsetWidth || 180;
-    const tooltipHeight = this.el.offsetHeight || 84;
+    const tooltipWidth = this.el.offsetWidth;
+    const tooltipHeight = this.el.offsetHeight;
     const maxX = Math.max(margin, window.innerWidth - tooltipWidth - margin);
     const maxY = Math.max(margin, window.innerHeight - tooltipHeight - margin);
     const left = Math.min(Math.max(margin, x + 12), maxX);
     const top = Math.min(Math.max(margin, y + 12), maxY);
     this.el.style.left = `${left}px`;
     this.el.style.top = `${top}px`;
-    this.el.classList.remove("hidden");
   }
 
   hide(): void {
