@@ -14,7 +14,11 @@ export class Tooltip {
   show(cell: GridCell, x: number, y: number): void {
     const status = cell.is_land ? "land" : "ocean";
     const velocity = cell.has_velocity ? cell.velocity_speed_m_per_s!.toFixed(3) : "unavailable";
-    const confidence = cell.equatorial_uncertainty ? "equatorial / low confidence" : "standard";
+    const confidence = cell.equatorial_estimate
+      ? "equatorial estimate — experimental"
+      : cell.equatorial_uncertainty
+        ? "equator — unavailable (Coriolis term is zero)"
+        : "standard";
     this.el.innerHTML = `
       <div><strong>Cell:</strong> ${cell.id}</div>
       <div><strong>Lat:</strong> ${cell.clat.toFixed(3)}°</div>

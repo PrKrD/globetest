@@ -8,11 +8,16 @@ a derived geostrophic-velocity layer.
 
 - **Mask:** Maximenko `MDOT` fill values are displayed as land/no-data. This is
   data coverage, not a high-resolution coastline.
-- **Velocity:** horizontal ODT gradients are converted to geostrophic velocity
-  outside ±2° latitude. The ±2°–±5° band is coloured red to indicate low
-  confidence; ordinary geostrophy is undefined at the equator.
+- **Velocity:** outside ±3°, horizontal MDT gradients use ordinary geostrophy.
+  At 0°, a cubic smoothing spline supplies the curvature terms for an
+  equatorial β-plane estimate; a cubic smoothstep blends it into ordinary
+  geostrophy between 0° and ±3°. Equatorial estimates are identified in the
+  hover detail because this balanced estimate does not include wind-driven or
+  other ageostrophic flow.
 - **Controls:** the bottom-left switch enables/disables the velocity colour
-  layer. Off shows the flat Maximenko land/sea mask.
+  layer. Off shows the flat Maximenko land/sea mask. Its default-on
+  **Use experimental equator** sub-toggle shows the β-plane estimates; off
+  marks that experimental band red without rebuilding the globe geometry.
 
 Hover details use sectioned groups, beginning with **Geostrophic velocity**.
 Additional products such as mixed-layer depth can add their own independent
@@ -42,6 +47,23 @@ python3 -m pytest -q
 
 This creates `frontend/public/data/maximenko_slope.json`. Export is atomic, so a
 running local viewer keeps its prior dataset until a new build completes.
+
+## Data and method references
+
+- **Source MDT:** the bundled `Maximenko_dyntopo.nc` is the Maximenko/Niiler
+  1992–2002 mean dynamic ocean topography (MDOT) product. It combines satellite
+  altimetry, GRACE geoid information, drifter observations, and wind data; it
+  was distributed through the University of Hawaiʻi APDRC Dynamic Ocean
+  Topography project. See
+  [Maximenko et al. (2009), *Mean Dynamic Topography of the Ocean Derived from
+  Satellite and Drifting Buoy Data Using Three Different Techniques*](https://doi.org/10.1175/2009JTECHO672.1)
+  and [Maximenko et al. (2008), *Stationary Mesoscale Jet-Like Features in the
+  Ocean*](https://doi.org/10.1029/2008GL033267).
+- **Equatorial calculation:** the β-plane/f-plane transition follows the
+  equatorial current-estimation approach of
+  [Lagerloef et al. (1999)](https://doi.org/10.1029/1999JC900197). This viewer
+  uses a local cubic smoothing spline to obtain the needed first and second
+  topography derivatives before applying that transition.
 
 ## Run the globe
 

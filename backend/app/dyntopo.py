@@ -6,9 +6,12 @@ from dataclasses import dataclass
 
 import numpy as np
 from scipy.io import netcdf_file
+from scipy.interpolate import UnivariateSpline
 
 
 EARTH_RADIUS_METERS = 6_371_008.8
+EARTH_ROTATION_RAD_PER_S = 7.2921159e-5
+GRAVITY_M_PER_S2 = 9.80665
 
 
 @dataclass(frozen=True)
@@ -109,3 +112,61 @@ def coordinate_edges(coordinates: np.ndarray) -> np.ndarray:
         raise ValueError("Coordinates must be evenly spaced")
     half = spacing[0] / 2.0
     return np.concatenate(([coordinates[0] - half], coordinates[:-1] + half, [coordinates[-1] + half]))
+
+
+def equatorial_beta_plane_velocity(
+    height_m: np.ndarray,
+    longitude_deg: np.ndarray,
+    latitude_deg: np.ndarray,
+    *,
+    fit_half_width_deg: float = 3.5,
+    smoothing_m: float = 0.01,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Estimate equatorial velocity from cubic-spline height curvature.
+
+    The ordinary f-plane expression is singular at the equator.  On an
+    equatorial beta plane, differentiating the zonal momentum balance gives
+    u = -g eta_yy / beta at y=0.  We extend that smooth estimate through a
+    narrow tropical band, then callers blend it with the normal f-plane
+    result away from the equator.  The meridional component uses
+    v = g eta_xy / beta.
+
+    Cubic smoothing splines are fitted independently to contiguous valid
+    latitude runs at each longitude.  This avoids taking second differences
+    of the raw, noisy grid and avoids bridging land/no-data gaps.
+    """
+    values = np.asarray(height_m, dtype=np.float64)
+    if values.shape != (latitude_deg.size, longitude_deg.size):
+        raise ValueError("Height field dimensions do not match its coordinates")
+
+    latitude = np.asarray(latitude_deg, dtype=np.float64)
+    y_m = EARTH_RADIUS_METERS * np.deg2rad(latitude)
+    slope_y = np.full_like(values, np.nan)
+    curvature_yy = np.full_like(values, np.nan)
+    in_band = np.abs(latitude) <= fit_half_width_deg
+
+    for j in range(values.shape[1]):
+        valid_indices = np.flatnonzero(in_band & np.isfinite(values[:, j]))
+        if valid_indices.size < 4:
+            continue
+        split_points = np.where(np.diff(valid_indices) != 1)[0] + 1
+        for indices in np.split(valid_indices, split_points):
+            if indices.size < 4:
+                continue
+            spline = UnivariateSpline(
+                y_m[indices],
+                values[indices, j],
+                k=3,
+                s=(smoothing_m**2) * indices.size,
+            )
+            slope_y[indices, j] = spline(y_m[indices], nu=1)
+            curvature_yy[indices, j] = spline(y_m[indices], nu=2)
+
+    eta_xy, _, _ = spherical_gradient(slope_y, longitude_deg, latitude_deg)
+    beta = 2.0 * EARTH_ROTATION_RAD_PER_S / EARTH_RADIUS_METERS
+    velocity_east = -GRAVITY_M_PER_S2 * curvature_yy / beta
+    velocity_north = GRAVITY_M_PER_S2 * eta_xy / beta
+    valid = np.isfinite(velocity_east) & np.isfinite(velocity_north)
+    velocity_east[~valid] = np.nan
+    velocity_north[~valid] = np.nan
+    return velocity_east, velocity_north, valid

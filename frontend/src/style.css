@@ -52,6 +52,7 @@ body,
 
 .control-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 5px 0; }
 .control-master { font-weight: 500; }
+.control-subordinate { margin-top: 4px; padding-top: 8px; border-top: 1px solid rgba(168, 215, 240, 0.2); font-size: 11px; color: #bdd4e2; }
 .control-row input { appearance: none; width: 32px; height: 18px; margin: 0; border-radius: 10px; background: #557080; cursor: pointer; transition: background 140ms ease; }
 .control-row input::after { content: ""; display: block; width: 14px; height: 14px; margin: 2px; border-radius: 50%; background: white; transition: transform 140ms ease; }
 .control-row input:checked { background: #20a9b6; }

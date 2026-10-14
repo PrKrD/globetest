@@ -18,12 +18,4 @@ dist/
 .test-tools/
 
 # Generated data artifacts
-backend/data/*.zip
-backend/data/*.shp
-backend/data/*.shx
-backend/data/*.dbf
-backend/data/*.prj
-backend/data/*.cpg
-backend/data/mask_u8.bin
-backend/data/grid_meta.json
 frontend/public/data/*.json

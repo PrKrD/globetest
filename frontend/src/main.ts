@@ -34,7 +34,7 @@ async function bootstrap(): Promise<void> {
 
   const tooltip = new Tooltip("tooltip");
   new VelocityControls((state) => {
-    gridLayer.setVelocityVisualization(state.enabled);
+    gridLayer.setVelocityVisualization(state.enabled, state.equatorialEnabled);
   });
 
   const picking = new GridPicking(viewer, gridLayer, (cell, x, y) => {

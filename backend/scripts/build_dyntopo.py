@@ -9,13 +9,21 @@ from pathlib import Path
 import numpy as np
 
 from app.config import DATA_DIR, FRONTEND_PUBLIC_DATA_DIR
-from app.dyntopo import coordinate_edges, load_maximenko, spherical_gradient
+from app.dyntopo import (
+    coordinate_edges,
+    equatorial_beta_plane_velocity,
+    load_maximenko,
+    spherical_gradient,
+)
 
 
 GRAVITY_M_PER_S2 = 9.80665
 EARTH_ROTATION_RAD_PER_S = 7.2921159e-5
-MIN_GEOSTROPHIC_LATITUDE_DEG = 2.0
-EQUATORIAL_UNCERTAINTY_LATITUDE_DEG = 5.0
+# The curvature relationship is exact on the equator.  With this 0.5° grid,
+# a 0.25° core selects only the 0° row; nearby rows blend immediately toward
+# the conventional solution instead of creating an artificial tropical stripe.
+BETA_PLANE_CORE_LATITUDE_DEG = 0.25
+BETA_PLANE_BLEND_LATITUDE_DEG = 3.0
 
 
 def parse_args() -> argparse.Namespace:
@@ -29,6 +37,12 @@ def rounded(value: float, digits: int = 9) -> float:
     return round(float(value), digits)
 
 
+def smoothstep(value: np.ndarray) -> np.ndarray:
+    """Return a cubic, zero-slope transition from 0 to 1."""
+    t = np.clip(value, 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
 def main() -> None:
     args = parse_args()
     source = load_maximenko(str(args.input))
@@ -37,13 +51,49 @@ def main() -> None:
     )
     valid_gradient = np.isfinite(magnitude)
     coriolis = 2.0 * EARTH_ROTATION_RAD_PER_S * np.sin(np.deg2rad(source.latitude_deg))[:, None]
-    valid_velocity = valid_gradient & (np.abs(source.latitude_deg)[:, None] >= MIN_GEOSTROPHIC_LATITUDE_DEG)
+    valid_f_plane = valid_gradient & (np.abs(source.latitude_deg)[:, None] > 0.0)
     velocity_east = np.full_like(grad_east, np.nan)
     velocity_north = np.full_like(grad_north, np.nan)
-    np.divide(-GRAVITY_M_PER_S2 * grad_north, coriolis, out=velocity_east, where=valid_velocity)
-    np.divide(GRAVITY_M_PER_S2 * grad_east, coriolis, out=velocity_north, where=valid_velocity)
+    np.divide(-GRAVITY_M_PER_S2 * grad_north, coriolis, out=velocity_east, where=valid_f_plane)
+    np.divide(GRAVITY_M_PER_S2 * grad_east, coriolis, out=velocity_north, where=valid_f_plane)
+
+    beta_east, beta_north, valid_beta = equatorial_beta_plane_velocity(
+        source.height_m, source.longitude_deg, source.latitude_deg
+    )
+    latitude_abs = np.abs(source.latitude_deg)[:, None]
+    blend_weight = np.broadcast_to(
+        smoothstep(
+            (latitude_abs - BETA_PLANE_CORE_LATITUDE_DEG)
+            / (BETA_PLANE_BLEND_LATITUDE_DEG - BETA_PLANE_CORE_LATITUDE_DEG)
+        ),
+        source.height_m.shape,
+    )
+    use_beta_only = (latitude_abs <= BETA_PLANE_CORE_LATITUDE_DEG) & valid_beta
+    use_blend = (
+        (latitude_abs > BETA_PLANE_CORE_LATITUDE_DEG)
+        & (latitude_abs < BETA_PLANE_BLEND_LATITUDE_DEG)
+        & valid_beta
+        & valid_f_plane
+    )
+    velocity_east[use_beta_only] = beta_east[use_beta_only]
+    velocity_north[use_beta_only] = beta_north[use_beta_only]
+    velocity_east[use_blend] = (
+        (1.0 - blend_weight[use_blend]) * beta_east[use_blend]
+        + blend_weight[use_blend] * velocity_east[use_blend]
+    )
+    velocity_north[use_blend] = (
+        (1.0 - blend_weight[use_blend]) * beta_north[use_blend]
+        + blend_weight[use_blend] * velocity_north[use_blend]
+    )
+    valid_velocity = np.isfinite(velocity_east) & np.isfinite(velocity_north)
     velocity_speed = np.hypot(velocity_east, velocity_north)
-    velocity_p98 = float(np.nanpercentile(velocity_speed, 98.0))
+    # Keep the ordinary-ocean colour scale stable: the experimental values
+    # grow rapidly as f approaches zero and would otherwise flatten detail in
+    # the rest of the map.
+    reference_velocity = velocity_speed[
+        np.abs(source.latitude_deg) >= BETA_PLANE_BLEND_LATITUDE_DEG
+    ]
+    velocity_p98 = float(np.nanpercentile(reference_velocity, 98.0))
     lat_edges = coordinate_edges(source.latitude_deg)
     lon_step = float(np.median(np.diff(source.longitude_deg)))
 
@@ -54,7 +104,8 @@ def main() -> None:
             is_land = int(not source.valid[i, j])
             has_velocity = int(valid_velocity[i, j])
             speed = float(velocity_speed[i, j]) if has_velocity else 0.0
-            equatorial_uncertainty = int(abs(latitude) < EQUATORIAL_UNCERTAINTY_LATITUDE_DEG)
+            equatorial_uncertainty = int(abs(latitude) < BETA_PLANE_BLEND_LATITUDE_DEG)
+            equatorial_estimate = int(equatorial_uncertainty and has_velocity)
             cells.append(
                 {
                     "id": i * n_lon + j,
@@ -68,6 +119,7 @@ def main() -> None:
                     "has_velocity": has_velocity,
                     "velocity_speed_m_per_s": rounded(speed, 6),
                     "equatorial_uncertainty": equatorial_uncertainty,
+                    "equatorial_estimate": equatorial_estimate,
                 }
             )
 
@@ -78,8 +130,9 @@ def main() -> None:
         "n_lat": int(source.latitude_deg.size),
         "n_lon": int(n_lon),
         "velocity_p98_m_per_s": rounded(velocity_p98, 6),
-        "min_geostrophic_latitude_deg": MIN_GEOSTROPHIC_LATITUDE_DEG,
-        "equatorial_uncertainty_latitude_deg": EQUATORIAL_UNCERTAINTY_LATITUDE_DEG,
+        "equatorial_method": "cubic_spline_beta_plane_blended_to_f_plane",
+        "beta_plane_core_latitude_deg": BETA_PLANE_CORE_LATITUDE_DEG,
+        "beta_plane_blend_latitude_deg": BETA_PLANE_BLEND_LATITUDE_DEG,
         "cells": cells,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

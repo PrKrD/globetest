@@ -11,4 +11,4 @@ python3 -m pytest -q
 ```
 
 The raw source is `data/Maximenko_dyntopo.nc`; the generated browser dataset is
-`frontend/public/data/maximenko_slope.json`.
+`../frontend/public/data/maximenko_slope.json` (relative to `backend/`).
