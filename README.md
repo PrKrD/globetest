@@ -2,13 +2,14 @@
 
 An interactive Cesium globe combining the Maximenko mean dynamic-topography
 product with the de Boyer Montégut et al. (2023) mixed-layer-depth climatology.
-The native 0.5° Maximenko grid supplies the displayed land/no-data mask and the
-common display grid for both products.
+The native 0.5° Maximenko grid supplies the common display grid. The de Boyer
+Montégut product supplies the displayed land/ocean mask.
 
 ## What the globe shows
 
-- **Mask:** Maximenko `MDOT` fill values are displayed as land/no-data. This is
-  data coverage, not a high-resolution coastline.
+- **Mask:** the de Boyer Montégut 1° land/ocean mask is remapped to the 0.5°
+  display grid by spherical overlap area. It is data-product coverage, not a
+  high-resolution coastline. Ocean cells without Maximenko data remain ocean.
 - **Velocity:** outside ±3°, horizontal MDT gradients use ordinary geostrophy.
   At 0°, a cubic smoothing spline supplies the curvature terms for an
   equatorial β-plane estimate; a cubic smoothstep blends it into ordinary
@@ -19,7 +20,9 @@ common display grid for both products.
   valid value among the 12 monthly climatological MLD maps. H is calculated on
   the source 1° grid before periodic, mask-aware bilinear interpolation onto
   the Maximenko grid. No additional Gaussian smoothing is applied because the
-  source climatology has already been objectively mapped.
+  source climatology has already been objectively mapped. MLD is displayed
+  throughout the remapped de Boyer Montégut ocean wherever source data are
+  available, including cells without Maximenko coverage.
 - **Geostrophic subduction:** the signed diagnostic is
   `S_geo = -div(H v_geo)`, evaluated with a conservative finite-volume
   spherical divergence. Positive values indicate horizontal transport
@@ -27,11 +30,12 @@ common display grid for both products.
   and an upward contribution. Values are in m/s and use the maximum MLD
   described above.
 - **Controls:** subduction, H, and velocity have mutually exclusive switches,
-  with velocity on by default. Subduction and velocity each have an independent,
+  with H on by default. Subduction and velocity each have an independent,
   default-on **Use experimental equator** sub-toggle. Turning one off paints the
   experimental band red without removing its hover values. A product legend
   shows the active scale and its 98th-percentile clipping limit. Outside that
   band, ocean cells where velocity or subduction is unavailable are also red.
+  This includes de Boyer Montégut ocean cells without Maximenko data.
 
 Hover details contain independent **Geostrophic velocity**, **Maximum
 mixed-layer depth (H)**, and **Geostrophic subduction** sections. H reports its

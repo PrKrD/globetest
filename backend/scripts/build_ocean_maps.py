@@ -47,6 +47,13 @@ def main() -> None:
     source = load_maximenko(str(args.input))
     mld_source = load_mld(str(args.mld_input))
     mld_maximum = maximum_mld(mld_source.monthly_m)
+    physical_ocean = regrid_ocean_mask_by_overlap(
+        mld_source.source_ocean,
+        mld_source.longitude_deg,
+        mld_source.latitude_deg,
+        source.longitude_deg,
+        source.latitude_deg,
+    )
     regridded_mld = regrid_maximum_mld(
         mld_maximum.maximum_m,
         mld_maximum.month_count,
@@ -54,14 +61,7 @@ def main() -> None:
         mld_source.latitude_deg,
         source.longitude_deg,
         source.latitude_deg,
-        source.valid,
-    )
-    physical_ocean = regrid_ocean_mask_by_overlap(
-        mld_source.source_ocean,
-        mld_source.longitude_deg,
-        mld_source.latitude_deg,
-        source.longitude_deg,
-        source.latitude_deg,
+        physical_ocean,
     )
     velocity = reconstruct_geostrophic_velocity(
         source.height_m, source.longitude_deg, source.latitude_deg
@@ -94,7 +94,7 @@ def main() -> None:
     n_lon = source.longitude_deg.size
     for i, latitude in enumerate(source.latitude_deg):
         for j, longitude in enumerate(source.longitude_deg):
-            is_land = int(not source.valid[i, j])
+            is_land = int(not physical_ocean[i, j])
             has_velocity = int(velocity.valid[i, j])
             speed = float(velocity_speed[i, j]) if has_velocity else 0.0
             equatorial_uncertainty = int(

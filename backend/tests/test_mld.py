@@ -118,3 +118,31 @@ def test_remapped_source_mask_preserves_all_valid_transport_cells() -> None:
     )
 
     assert np.all(physical_ocean[topography.valid])
+
+
+def test_mld_regridding_covers_ocean_without_maximenko_data() -> None:
+    topography = load_maximenko(str(TOPOGRAPHY_PATH))
+    mld = load_mld(str(DATA_PATH))
+    physical_ocean = regrid_ocean_mask_by_overlap(
+        mld.source_ocean,
+        mld.longitude_deg,
+        mld.latitude_deg,
+        topography.longitude_deg,
+        topography.latitude_deg,
+    )
+    mld_maximum = maximum_mld(mld.monthly_m)
+
+    result = regrid_maximum_mld(
+        mld_maximum.maximum_m,
+        mld_maximum.month_count,
+        mld.longitude_deg,
+        mld.latitude_deg,
+        topography.longitude_deg,
+        topography.latitude_deg,
+        physical_ocean,
+    )
+
+    ocean_without_topography = physical_ocean & ~topography.valid
+    assert np.any(ocean_without_topography)
+    assert np.any(result.valid & ocean_without_topography)
+    assert not np.any(result.valid & ~physical_ocean)

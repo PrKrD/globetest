@@ -70,17 +70,11 @@ const SUBDUCTION_POSITIVE_COLOR = Color.fromCssColorString("#1b9e77");
 
 export class GridLayer {
   private scene: Scene;
-  private landPrimitive: Primitive | undefined;
-  private velocityPrimitive: Primitive | undefined;
-  private cautionedVelocityPrimitive: Primitive | undefined;
-  private mldPrimitive: Primitive | undefined;
-  private subductionPrimitive: Primitive | undefined;
-  private cautionedSubductionPrimitive: Primitive | undefined;
-  private flatOceanPrimitive: Primitive | undefined;
+  private dataPrimitive: Primitive | undefined;
   private boundaryPrimitive: Primitive | undefined;
   private dataset: GridDataset | null = null;
   private cellsById = new Map<number, GridCell>();
-  private visualizationMode: VisualizationMode = "velocity";
+  private visualizationMode: VisualizationMode = "mld";
   private showEquatorialEstimates = true;
   private showEquatorialSubduction = true;
 
@@ -109,63 +103,25 @@ export class GridLayer {
     this.visualizationMode = mode;
     this.showEquatorialEstimates = equatorialEnabled;
     this.showEquatorialSubduction = subductionEquatorialEnabled;
-    this.updatePrimitiveVisibility();
+    this.updateCellColors();
   }
 
   private buildDataPrimitives(): void {
     if (!this.dataset) return;
-    const landInstances: GeometryInstance[] = [];
-    const velocityInstances: GeometryInstance[] = [];
-    const cautionedVelocityInstances: GeometryInstance[] = [];
-    const mldInstances: GeometryInstance[] = [];
-    const subductionInstances: GeometryInstance[] = [];
-    const cautionedSubductionInstances: GeometryInstance[] = [];
-    const flatOceanInstances: GeometryInstance[] = [];
+    const instances = this.dataset.cells.map((cell) =>
+      this.buildColoredCellInstance(cell, this.colorForCell(cell)),
+    );
+    this.dataPrimitive = this.buildPrimitive(instances);
+    this.scene.primitives.add(this.dataPrimitive);
 
-    for (const cell of this.dataset.cells) {
-      if (cell.is_land) {
-        landInstances.push(this.buildColoredCellInstance(cell, LAND_CELL_COLOR));
-        continue;
-      }
-
-      const velocityColor = this.velocityColorForCell(cell);
-      velocityInstances.push(this.buildColoredCellInstance(cell, velocityColor));
-      cautionedVelocityInstances.push(
-        this.buildColoredCellInstance(
-          cell,
-          cell.equatorial_estimate ? EQUATORIAL_CAUTION_COLOR : velocityColor,
-        ),
-      );
-      mldInstances.push(this.buildColoredCellInstance(cell, this.mldColorForCell(cell)));
-      const subductionColor = this.subductionColorForCell(cell);
-      subductionInstances.push(this.buildColoredCellInstance(cell, subductionColor));
-      cautionedSubductionInstances.push(
-        this.buildColoredCellInstance(
-          cell,
-          cell.equatorial_estimate && cell.has_subduction
-            ? EQUATORIAL_CAUTION_COLOR
-            : subductionColor,
-        ),
-      );
-      flatOceanInstances.push(this.buildColoredCellInstance(cell, OCEAN_CELL_COLOR));
-    }
-
-    this.landPrimitive = this.buildPrimitive(landInstances);
-    this.velocityPrimitive = this.buildPrimitive(velocityInstances);
-    this.cautionedVelocityPrimitive = this.buildPrimitive(cautionedVelocityInstances);
-    this.mldPrimitive = this.buildPrimitive(mldInstances);
-    this.subductionPrimitive = this.buildPrimitive(subductionInstances);
-    this.cautionedSubductionPrimitive = this.buildPrimitive(cautionedSubductionInstances);
-    this.flatOceanPrimitive = this.buildPrimitive(flatOceanInstances);
-
-    this.scene.primitives.add(this.landPrimitive);
-    this.scene.primitives.add(this.velocityPrimitive);
-    this.scene.primitives.add(this.cautionedVelocityPrimitive);
-    this.scene.primitives.add(this.mldPrimitive);
-    this.scene.primitives.add(this.subductionPrimitive);
-    this.scene.primitives.add(this.cautionedSubductionPrimitive);
-    this.scene.primitives.add(this.flatOceanPrimitive);
-    this.updatePrimitiveVisibility();
+    // Per-instance attributes are available only after Cesium has prepared the
+    // primitive. Apply the latest selected mode then in case it changed while
+    // the asynchronous geometry build was in progress.
+    const removeReadyListener = this.scene.postRender.addEventListener(() => {
+      if (!this.dataPrimitive?.ready) return;
+      removeReadyListener();
+      this.updateCellColors();
+    });
   }
 
   getDataset(): GridDataset {
@@ -269,25 +225,35 @@ export class GridLayer {
       : Color.lerp(SUBDUCTION_ZERO_COLOR, SUBDUCTION_POSITIVE_COLOR, normalized, new Color());
   }
 
-  private updatePrimitiveVisibility(): void {
-    if (
-      !this.velocityPrimitive ||
-      !this.cautionedVelocityPrimitive ||
-      !this.mldPrimitive ||
-      !this.subductionPrimitive ||
-      !this.cautionedSubductionPrimitive ||
-      !this.flatOceanPrimitive
-    ) {
-      return;
+  private colorForCell(cell: GridCell): Color {
+    if (cell.is_land) return LAND_CELL_COLOR;
+
+    if (this.visualizationMode === "velocity") {
+      if (!this.showEquatorialEstimates && cell.equatorial_estimate) {
+        return EQUATORIAL_CAUTION_COLOR;
+      }
+      return this.velocityColorForCell(cell);
     }
-    const showVelocity = this.visualizationMode === "velocity";
-    this.velocityPrimitive.show = showVelocity && this.showEquatorialEstimates;
-    this.cautionedVelocityPrimitive.show = showVelocity && !this.showEquatorialEstimates;
-    this.mldPrimitive.show = this.visualizationMode === "mld";
-    const showSubduction = this.visualizationMode === "subduction";
-    this.subductionPrimitive.show = showSubduction && this.showEquatorialSubduction;
-    this.cautionedSubductionPrimitive.show = showSubduction && !this.showEquatorialSubduction;
-    this.flatOceanPrimitive.show = this.visualizationMode === "none";
+    if (this.visualizationMode === "mld") return this.mldColorForCell(cell);
+    if (this.visualizationMode === "subduction") {
+      if (!this.showEquatorialSubduction && cell.equatorial_estimate && cell.has_subduction) {
+        return EQUATORIAL_CAUTION_COLOR;
+      }
+      return this.subductionColorForCell(cell);
+    }
+    return OCEAN_CELL_COLOR;
+  }
+
+  private updateCellColors(): void {
+    if (!this.dataset || !this.dataPrimitive?.ready) return;
+
+    for (const cell of this.dataset.cells) {
+      const attributes = this.dataPrimitive.getGeometryInstanceAttributes(cell);
+      attributes.color = ColorGeometryInstanceAttribute.toValue(
+        this.colorForCell(cell),
+        attributes.color,
+      );
+    }
   }
 
   private withIndices(payload: GridDataset): GridDataset {

@@ -37,9 +37,11 @@ solution from the 0.25° core into ordinary geostrophy at ±3°. The shared
 diagnostics.
 
 MLD is the maximum of the available 12 monthly climatologies on the source 1°
-grid. Periodic, mask-aware bilinear interpolation maps it to the 0.5° grid,
-renormalizing around invalid source corners. The stored coverage is the minimum
-valid-month count among contributing cells. No additional smoothing is applied.
+grid. Periodic, mask-aware bilinear interpolation maps it to the 0.5° grid over
+the remapped de Boyer Montégut ocean mask, including ocean cells without
+Maximenko coverage, and renormalizes around invalid source corners. The stored
+coverage is the minimum valid-month count among contributing cells. No
+additional smoothing is applied.
 The source product defines MLD using a +0.03 kg/m³ potential-density change
 relative to 10 m and is described at
 [SEANOE](https://doi.org/10.17882/91774).
@@ -71,7 +73,9 @@ three explicit policies:
 
 The physical-ocean mask comes from an exact spherical overlap-area remap of the
 1° MLD land/ocean mask. A target cell is ocean when at least half its area
-overlaps source ocean; ties remain ocean.
+overlaps source ocean; ties remain ocean. This mask also defines displayed land
+and ocean. Within it, missing Maximenko velocity and inherited subduction values
+remain unavailable and are displayed in red.
 
 Cell tendencies and the categorized boundary budget are derived from the same
 face-flux arrays. Shared internal faces therefore cancel pairwise, and the
