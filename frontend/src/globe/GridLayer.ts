@@ -17,6 +17,8 @@ import {
 } from "cesium";
 
 import { LAND_COLOR, OCEAN_COLOR } from "../config";
+import { cellValue, colorAt, defaultRange, resolveScale, sortedValues } from "./ColorScale";
+import type { DataMode, PercentileRange, ResolvedColorScale } from "./ColorScale";
 
 export interface GridCell {
   id: number;
@@ -58,16 +60,6 @@ const GRID_LINE_HEIGHT_METERS = 8.0;
 const LAND_CELL_COLOR = Color.fromCssColorString(LAND_COLOR);
 const OCEAN_CELL_COLOR = Color.fromCssColorString(OCEAN_COLOR);
 const EQUATORIAL_CAUTION_COLOR = Color.fromCssColorString("#d94a43");
-const VELOCITY_LOW_COLOR = Color.fromCssColorString("#123b7a");
-const VELOCITY_MIDDLE_COLOR = Color.fromCssColorString("#24b6b0");
-const VELOCITY_HIGH_COLOR = Color.fromCssColorString("#f2d13d");
-const MLD_LOW_COLOR = Color.fromCssColorString("#440154");
-const MLD_MIDDLE_COLOR = Color.fromCssColorString("#21918c");
-const MLD_HIGH_COLOR = Color.fromCssColorString("#fde725");
-const SUBDUCTION_NEGATIVE_COLOR = Color.fromCssColorString("#5e3c99");
-const SUBDUCTION_ZERO_COLOR = Color.fromCssColorString("#ffffbf");
-const SUBDUCTION_POSITIVE_COLOR = Color.fromCssColorString("#1b9e77");
-
 export class GridLayer {
   private scene: Scene;
   private dataPrimitive: Primitive | undefined;
@@ -75,6 +67,8 @@ export class GridLayer {
   private dataset: GridDataset | null = null;
   private cellsById = new Map<number, GridCell>();
   private visualizationMode: VisualizationMode = "mld";
+  private populations: Record<DataMode, number[]> = { velocity: [], mld: [], subduction: [] };
+  private scale: ResolvedColorScale | null = null;
   private showEquatorialEstimates = true;
   private showEquatorialSubduction = true;
 
@@ -88,6 +82,10 @@ export class GridLayer {
     this.dataset = this.withIndices(payload);
     this.cellsById = new Map(this.dataset.cells.map((cell) => [cell.id, cell]));
 
+    for (const mode of ["velocity", "mld", "subduction"] as const) {
+      this.populations[mode] = sortedValues(this.dataset.cells, mode);
+    }
+    this.scale = resolveScale("mld", this.populations.mld, defaultRange());
     this.buildDataPrimitives();
     if (!this.dataset.dataset_type) {
       this.boundaryPrimitive = this.buildBoundaryPrimitive(this.dataset);
@@ -99,8 +97,10 @@ export class GridLayer {
     mode: VisualizationMode,
     equatorialEnabled: boolean,
     subductionEquatorialEnabled: boolean,
+    range: PercentileRange,
   ): void {
     this.visualizationMode = mode;
+    this.scale = mode === "none" ? null : resolveScale(mode, this.populations[mode], range);
     this.showEquatorialEstimates = equatorialEnabled;
     this.showEquatorialSubduction = subductionEquatorialEnabled;
     this.updateCellColors();
@@ -190,39 +190,17 @@ export class GridLayer {
     return instance;
   }
 
-  private velocityColorForCell(cell: GridCell): Color {
-    if (
-      !cell.has_velocity ||
-      cell.velocity_speed_m_per_s === undefined ||
-      !this.dataset?.velocity_p98_m_per_s
-    ) {
-      return EQUATORIAL_CAUTION_COLOR;
-    }
-    const normalized = Math.sqrt(Math.min(cell.velocity_speed_m_per_s / this.dataset.velocity_p98_m_per_s, 1));
-    return normalized < 0.55
-      ? Color.lerp(VELOCITY_LOW_COLOR, VELOCITY_MIDDLE_COLOR, normalized / 0.55, new Color())
-      : Color.lerp(VELOCITY_MIDDLE_COLOR, VELOCITY_HIGH_COLOR, (normalized - 0.55) / 0.45, new Color());
+  getColorScale(): ResolvedColorScale | null {
+    return this.scale;
   }
 
-  private mldColorForCell(cell: GridCell): Color {
-    if (!cell.has_mld || cell.mld_max_m === undefined || !this.dataset?.mld_max_p98_m) {
-      return OCEAN_CELL_COLOR;
+  private dataColorForCell(cell: GridCell, mode: DataMode): Color {
+    const value = cellValue(cell, mode);
+    if (value === undefined || !this.scale) {
+      return mode === "mld" ? OCEAN_CELL_COLOR : EQUATORIAL_CAUTION_COLOR;
     }
-    const normalized = Math.sqrt(Math.min(cell.mld_max_m / this.dataset.mld_max_p98_m, 1));
-    return normalized < 0.5
-      ? Color.lerp(MLD_LOW_COLOR, MLD_MIDDLE_COLOR, normalized / 0.5, new Color())
-      : Color.lerp(MLD_MIDDLE_COLOR, MLD_HIGH_COLOR, (normalized - 0.5) / 0.5, new Color());
-  }
-
-  private subductionColorForCell(cell: GridCell): Color {
-    const limit = this.dataset?.subduction_abs_p98_m_per_s;
-    if (!cell.has_subduction || cell.subduction_m_per_s === undefined || !limit) {
-      return EQUATORIAL_CAUTION_COLOR;
-    }
-    const normalized = Math.max(-1, Math.min(cell.subduction_m_per_s / limit, 1));
-    return normalized < 0
-      ? Color.lerp(SUBDUCTION_NEGATIVE_COLOR, SUBDUCTION_ZERO_COLOR, normalized + 1, new Color())
-      : Color.lerp(SUBDUCTION_ZERO_COLOR, SUBDUCTION_POSITIVE_COLOR, normalized, new Color());
+    const [r, g, b] = colorAt(value, this.scale);
+    return Color.fromBytes(r, g, b);
   }
 
   private colorForCell(cell: GridCell): Color {
@@ -232,14 +210,14 @@ export class GridLayer {
       if (!this.showEquatorialEstimates && cell.equatorial_estimate) {
         return EQUATORIAL_CAUTION_COLOR;
       }
-      return this.velocityColorForCell(cell);
+      return this.dataColorForCell(cell, "velocity");
     }
-    if (this.visualizationMode === "mld") return this.mldColorForCell(cell);
+    if (this.visualizationMode === "mld") return this.dataColorForCell(cell, "mld");
     if (this.visualizationMode === "subduction") {
       if (!this.showEquatorialSubduction && cell.equatorial_estimate && cell.has_subduction) {
         return EQUATORIAL_CAUTION_COLOR;
       }
-      return this.subductionColorForCell(cell);
+      return this.dataColorForCell(cell, "subduction");
     }
     return OCEAN_CELL_COLOR;
   }

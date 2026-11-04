@@ -33,7 +33,12 @@ Montégut product supplies the displayed land/ocean mask.
   with H on by default. Subduction and velocity each have an independent,
   default-on **Use experimental equator** sub-toggle. Turning one off paints the
   experimental band red without removing its hover values. A product legend
-  shows the active scale and its 98th-percentile clipping limit. Outside that
+  shows the active scale and physical clipping limits. Its **Color range** slider
+  and numeric fields select lower and upper percentiles from 0 to 100, starting
+  at 2–98. Each layer remembers its range until reload. Colors update live;
+  values outside the range keep the endpoint colors and their original hover
+  values. Velocity and H use square-root scales; signed subduction keeps zero
+  neutral, including asymmetric percentile ranges. Outside the experimental
   band, ocean cells where velocity or subduction is unavailable are also red.
   This includes de Boyer Montégut ocean cells without Maximenko data.
 

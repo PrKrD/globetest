@@ -7,6 +7,9 @@ import { GridPicking } from "./globe/GridPicking";
 import { Tooltip } from "./ui/Tooltip";
 import { LayerControls } from "./ui/LayerControls";
 import { LayerLegend } from "./ui/LayerLegend";
+import { defaultRange } from "./globe/ColorScale";
+import type { DataMode, PercentileRange } from "./globe/ColorScale";
+import type { LayerVisibility } from "./ui/LayerControls";
 import "./style.css";
 
 async function bootstrap(): Promise<void> {
@@ -34,14 +37,26 @@ async function bootstrap(): Promise<void> {
   await gridLayer.loadFromUrl(FRONTEND_DYNTOPO_DATA_URL);
 
   const tooltip = new Tooltip("tooltip");
-  const legend = new LayerLegend("layerLegend");
-  new LayerControls((state) => {
-    gridLayer.setVisualization(
-      state.mode,
-      state.equatorialEnabled,
-      state.subductionEquatorialEnabled,
-    );
-    legend.show(state.mode, gridLayer.getDataset());
+  const ranges: Record<DataMode, PercentileRange> = {
+    velocity: defaultRange(), mld: defaultRange(), subduction: defaultRange(),
+  };
+  let state: LayerVisibility = { mode: "mld", equatorialEnabled: true, subductionEquatorialEnabled: true };
+  let pendingFrame: number | null = null;
+  const render = () => {
+    pendingFrame = null;
+    const range = state.mode === "none" ? defaultRange() : ranges[state.mode];
+    gridLayer.setVisualization(state.mode, state.equatorialEnabled, state.subductionEquatorialEnabled, range);
+    legend.show(state.mode, gridLayer.getColorScale(), range);
+  };
+  const legend = new LayerLegend("layerLegend", (range) => {
+    if (state.mode === "none") return;
+    ranges[state.mode] = range;
+    if (pendingFrame === null) pendingFrame = requestAnimationFrame(render);
+  });
+  new LayerControls((nextState) => {
+    state = nextState;
+    if (pendingFrame !== null) cancelAnimationFrame(pendingFrame);
+    render();
   });
 
   const picking = new GridPicking(viewer, gridLayer, (cell, x, y) => {
@@ -53,6 +68,7 @@ async function bootstrap(): Promise<void> {
   });
 
   window.addEventListener("beforeunload", () => {
+    if (pendingFrame !== null) cancelAnimationFrame(pendingFrame);
     picking.destroy();
   });
 }
