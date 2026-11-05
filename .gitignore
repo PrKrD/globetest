@@ -20,3 +20,13 @@ dist/
 # Generated data artifacts
 frontend/public/data/*.json
 backend/diagnostics/
+
+# Large scientific datasets
+*.nc
+*.npz
+*.grib
+*.grib2
+
+# Generated figures from Kevin's scripts
+backend/Kevin_Code/Figures/
+backend/Kevin_Code/*.png
