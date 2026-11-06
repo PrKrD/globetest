@@ -27,6 +27,34 @@ Inputs default to `data/Maximenko_dyntopo.nc` and
 `../frontend/public/data/maximenko_slope.json`. Use `--input`,
 `--mld-input`, or `--output` to override these paths. Export is atomic.
 
+`app/ocean_fields.py` performs the scientific calculations and returns an
+`OceanFields` dataclass containing unrounded NumPy arrays, validity masks, and
+the conservation budget. `app/globe_export.py` prepares the Cesium JSON product
+from those fields. `scripts/build_ocean_maps.py` coordinates loading,
+computation, and export.
+
+Scientific fields can also be obtained directly without creating a globe JSON
+file, for example for a future SST model (run with `backend` on `PYTHONPATH`):
+
+```python
+from app.config import DATA_DIR
+from app.dyntopo import load_maximenko
+from app.mld import load_mld
+from app.ocean_fields import compute_ocean_fields
+
+fields = compute_ocean_fields(
+    load_maximenko(str(DATA_DIR / "Maximenko_dyntopo.nc")),
+    load_mld(str(DATA_DIR / "mld_dr003_ref10m_v2023.nc")),
+)
+H = fields.mld.maximum_m
+u_geo = fields.velocity.east
+v_geo = fields.velocity.north
+S_geo = fields.subduction_geo.rate_m_per_s
+```
+
+Missing data remain NaN; use the corresponding `valid` masks on `fields.mld`,
+`fields.velocity`, and `fields.subduction_geo` as appropriate.
+
 ## Velocity and MLD reconstruction
 
 Outside ±3°, horizontal MDT gradients use ordinary f-plane geostrophy. At the
