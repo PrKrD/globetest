@@ -125,3 +125,10 @@ profiles, parameter sensitivity and robustness, conservation tables, a
 Markdown report, and a finite-volume-minus-legacy comparison. The comparison
 uses separate boundary and wet-interior colour scales for the full domain and
 10°S–10°N. Use `--output-dir` to choose another destination.
+
+## ERA5 MSLP EOF analysis
+
+The independent atmospheric pipeline analyses monthly MSLP at its native 0.25°
+resolution in each hemisphere and compares the 1940 and 1979 start dates.
+See [the MSLP EOF guide](MSLP_EOF.md) for installation, commands, numerical
+method, output definitions, validation and interpretation limits.

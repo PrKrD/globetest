@@ -4,6 +4,7 @@ __pycache__/
 *.pyo
 *.pyd
 *.egg-info/
+.pytest_cache/
 .venv/
 
 # Local machine/editor files
@@ -20,3 +21,8 @@ dist/
 # Generated data artifacts
 frontend/public/data/*.json
 backend/diagnostics/
+# Local ERA5 inputs (leave existing tracked ocean products intact)
+backend/data/*.nc
+backend/data/**/*.nc
+backend/data/*.nc4
+backend/data/**/*.nc4
