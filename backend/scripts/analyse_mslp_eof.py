@@ -17,11 +17,11 @@ import xarray as xr
 # Support the documented direct invocation without requiring PYTHONPATH.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.mslp_eof import (compare_periods, month_strings, open_mslp, select_domain,
+from app.mslp_eof import (DETRENDING_METHOD, compare_periods, month_strings, open_mslp, select_domain,
                            solve_eof, validate_grid, validate_months)
 from app.mslp_eof_diagnostics import (export_analysis, export_comparison,
                                       interpretation_scope, write_report)
-from app.mslp_indices import compare_indices
+from app.mslp_indices import align_pc1_convention, compare_indices
 
 LOG = logging.getLogger("mslp_eof")
 
@@ -33,7 +33,7 @@ def parse_args(argv=None):
     parser.add_argument("--start-years", nargs="+", type=int, default=[1940, 1979])
     parser.add_argument("--hemispheres", nargs="+", choices=["north", "south"], default=["north", "south"])
     parser.add_argument("--end-year", type=int, default=2026, help="Upper limit; final available month is detected")
-    parser.add_argument("--n-modes", type=int, default=6)
+    parser.add_argument("--n-modes", type=int, default=12)
     parser.add_argument("--block-latitudes", type=int, default=16)
     parser.add_argument("--max-lag", type=int, default=24)
     parser.add_argument("--detrend", action="store_true", help="Optional sensitivity only; primary default is off")
@@ -43,8 +43,9 @@ def parse_args(argv=None):
     parser.add_argument("--no-coastlines", action="store_true", help="Avoid Natural Earth downloads")
     parser.add_argument("--no-running-mean", action="store_true")
     parser.add_argument("--inspect-only", action="store_true", help="Print metadata without computing EOFs")
-    parser.add_argument("--render-only", action="store_true", help="Regenerate diagnostics from compatible saved EOF NetCDFs")
-    parser.add_argument("--reuse-existing", action="store_true", help="Reuse compatible saved EOFs and compute missing analyses")
+    reuse = parser.add_mutually_exclusive_group()
+    reuse.add_argument("--render-only", action="store_true", help="Regenerate diagnostics from compatible saved EOF NetCDFs")
+    reuse.add_argument("--reuse-existing", action="store_true", help="Reuse compatible saved EOFs and compute missing analyses")
     parser.add_argument("--index-data-dir", type=Path,
                         help="Offline AO/SAM tables and provenance.json; defaults to OUTPUT/reference_indices if present")
     parser.add_argument("--allow-other-resolution", action="store_true", help="Synthetic validation only; retains input grid")
@@ -52,6 +53,8 @@ def parse_args(argv=None):
 
 
 def run(args) -> Path | None:
+    if args.n_modes < 1 or args.block_latitudes < 1 or args.max_lag < 24:
+        raise ValueError("n_modes and block_latitudes must be positive; max_lag must be at least 24")
     field, metadata = open_mslp(args.input, args.variable, args.block_latitudes)
     try:
         LOG.info("Input inspection:\n%s", json.dumps(metadata, indent=2, default=str))
@@ -107,6 +110,7 @@ def run(args) -> Path | None:
                     if not (ds.sizes["mode"] == args.n_modes and
                             ds.sizes["lag"] == min(args.max_lag+1, period.sizes["time"]) and
                             ds.attrs["detrended"] == int(args.detrend) and
+                            (not args.detrend or ds.attrs.get("detrending_method") == DETRENDING_METHOD) and
                             ds.attrs.get("source_variable") == args.variable and
                             ds.attrs.get("source_files") == json.dumps(metadata["files"]) and
                             all(np.array_equal(ds[d].values, period[d].values)
@@ -120,6 +124,7 @@ def run(args) -> Path | None:
                 ds.attrs.update({"hemisphere": hemisphere, "source_variable": args.variable,
                                  "source_files": json.dumps(metadata["files"]),
                                  "native_resolution_primary": int(not args.allow_other_resolution)})
+                ds = align_pc1_convention(ds)
                 results[hemisphere, year] = ds
                 metadata["analyses"].append({"hemisphere": hemisphere, "start_year": year,
                                              "last_month": ending, "reused": bool(reuse),
@@ -146,6 +151,7 @@ def run(args) -> Path | None:
             analyses.append({"hemisphere": hemisphere, "basis_start": year,
                              "first_month": ds.attrs["first_month"], "last_month": ds.attrs["last_month"],
                              "n_months": ds.sizes["time"], "n_modes": ds.sizes["mode"],
+                             "pc1_sign_multiplier_from_initial": int(ds.attrs["pc1_sign_multiplier_from_initial"]),
                              "eof1_variance_percent": float(ds.explained_variance_percent.values[0]),
                              "retained_variance_percent": float(ds.cumulative_variance_percent.values[-1])})
         matches = {h: {"full_modes": ds.full_mode_number.values.tolist(),
@@ -175,6 +181,9 @@ def run(args) -> Path | None:
 with period-specific monthly climatologies, sqrt(cos(latitude)) weighting and
 the configured trend treatment. Weighted EOF vectors and physical hPa-per-PC-SD
 regression maps are saved separately.
+Saved PC1 and its paired maps follow positive AO/SAM: lower polar pressure
+relative to midlatitudes. PCs 2 onward keep the largest-absolute-loading-positive
+convention; they are not assigned AO/SAM identities.
 
 | Hemisphere | Period | Monthly samples | Retained modes | EOF1 variance (%) | Retained variance (%) |
 |---|---|---:|---:|---:|---:|
@@ -227,10 +236,12 @@ equal amplitude scales. Missing or repeated reference months cause an error.
 
 Conventional positive AO/SAM corresponds to lower polar pressure relative to
 midlatitudes. The alignment multiplier is chosen from each PC1 regression map's
-65–90° cap minus 35–55° band contrast, **not** by maximising correlation. A −1
-multiplier means the saved PC sign is opposite to the conventional index.
-The original NetCDF signs are preserved. Convention-aligned exported products
-would need the PC, weighted EOF and regression map flipped together.
+65–90° cap minus 35–55° band contrast, **not** by maximising correlation.
+The guardrail is applied before export: PC1, standardised PC1, weighted EOF1
+and regression map 1 are flipped together when necessary. The validation
+multiplier is therefore +1 for saved convention-aligned products. The multiplier
+relative to the initial largest-loading-positive convention is recorded in
+each NetCDF and the summary JSON. Higher modes retain their initial convention.
 
 | Reference | EOF basis start | Comparison months | N | PC1 multiplier | Saved PC1 r | Aligned PC1 r | Detrended paired-series r |
 |---|---:|---|---:|---:|---:|---:|---:|

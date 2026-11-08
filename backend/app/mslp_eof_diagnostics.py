@@ -260,7 +260,8 @@ def write_report(results: dict, comparisons: dict, metadata: dict, directory: Pa
              "Each period has its own twelve monthly climatologies. Differences therefore describe "
              "variability about different seasonal baselines, not a change of mean pressure. "
              "Optional detrending is recorded per analysis; the primary default retains trends and "
-             "decadal variability.", "", "## 4. EOF methodology", "",
+             "decadal variability. When requested, monthly climatology and linear trend are fitted "
+             "jointly to avoid reintroducing seasonal means.", "", "## 4. EOF methodology", "",
              "Anomalies are multiplied by sqrt(cos(latitude)). Covariance EOFs use the exact temporal "
              "Gram matrix, accumulated in float64 over spatial slabs. No grid-cell standard deviations "
              "are divided out. Eigenvalues use T−1 and percentages use total variance across all modes. "
@@ -269,7 +270,10 @@ def write_report(results: dict, comparisons: dict, metadata: dict, directory: Pa
              "regressions in hPa per one-standard-deviation PC. Multiplying regressions by standardised "
              "PCs reconstructs the retained anomaly component, including the pole without division by zero. "
              "The exact pole has zero area weight. EOF signs initially make the largest absolute "
-             "regression loading positive.", ""]
+             "regression loading positive. Before export, PC1 and its paired EOF and regression "
+             "map are oriented so positive PC1 means lower 65–90° cap pressure relative to the "
+             "35–55° band, following AO/SAM. Higher modes keep the initial convention; sign "
+             "alignment alone does not establish mode identity.", ""]
     for number, hemisphere in ((5, "north"), (6, "south")):
         name = "Northern" if hemisphere == "north" else "Southern"
         lines.extend([f"## {number}. {name} Hemisphere results", ""])
@@ -318,7 +322,7 @@ def write_report(results: dict, comparisons: dict, metadata: dict, directory: Pa
     lines.extend(["## 7. Historical-period comparison", "",
                   "A maximum-total-absolute-correlation assignment matches retained regression maps using "
                   "area-weighted spatial Pearson correlation. Modern maps and PCs are sign-aligned for "
-                  "comparison only; source NetCDF bases retain their original sign convention. The matching "
+                  "comparison only; source NetCDF bases retain their exported sign convention. The matching "
                   "is restricted to retained modes and need not recover a mode outside that set. "
                   "Variance differences use each period's own total variance. Common-period PC correlations "
                   "use each period's own EOF basis, climatology and full-period SD. These are descriptive "

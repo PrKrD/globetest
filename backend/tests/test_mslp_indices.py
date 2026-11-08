@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import xarray as xr
 
-from app.mslp_indices import compare_indices, read_monthly_index
+from app.mslp_indices import align_pc1_convention, compare_indices, read_monthly_index
 
 
 def reference_tables(directory, tables):
@@ -97,6 +97,13 @@ def test_reference_checksum_mismatch_rejected(tmp_path):
         stream.write("\n")
     with pytest.raises(ValueError, match="checksum"):
         compare_indices({("north", 1979): ds}, tmp_path)
+
+
+def test_sign_guardrail_rejects_undefined_pressure_contrast():
+    ds = pc_dataset()
+    ds["regression_map"] = xr.ones_like(ds.regression_map)
+    with pytest.raises(ValueError, match="no polar–midlatitude pressure contrast"):
+        align_pc1_convention(ds)
 
 
 def test_station_pressure_reconstruction_checks_marshall_sam_sign(tmp_path):

@@ -75,6 +75,30 @@ def _pc1_multiplier(ds: xr.Dataset) -> int:
     return -1 if contrast > 0 else 1
 
 
+def align_pc1_convention(ds: xr.Dataset) -> xr.Dataset:
+    """Orient saved PC1 like positive AO/SAM, preserving the reconstructed field.
+
+    This is a prescribed pressure-contrast convention, not an index fit or an
+    identification of higher modes. Reapplying it to saved results is idempotent.
+    """
+    multiplier = _pc1_multiplier(ds)
+    # A shallow copy keeps the large climatology and unsigned diagnostics shared;
+    # replace signed arrays rather than changing the caller's underlying data.
+    result = ds.copy(deep=False)
+    signs = xr.DataArray([multiplier] + [1] * (ds.sizes["mode"] - 1),
+                         dims="mode", coords={"mode": ds.mode})
+    for name in ("pc", "standardized_pc", "weighted_eof", "regression_map"):
+        result[name] = ds[name] * signs
+        result[name].attrs = ds[name].attrs.copy()
+    result.attrs["pc1_sign_convention"] = (
+        "positive AO/SAM: area-weighted 65–90 degree cap minus 35–55 degree "
+        "midlatitude regression loading is negative; no reference-index fitting")
+    result.attrs["pc1_sign_multiplier_from_initial"] = (
+        int(ds.attrs.get("pc1_sign_multiplier_from_initial", 1)) * multiplier)
+    result.attrs["higher_mode_sign_convention"] = "largest absolute regression loading positive"
+    return result
+
+
 def _paired_summary(ids: np.ndarray, pc: np.ndarray, index: np.ndarray, multiplier: int) -> dict:
     x = multiplier * pc[:, 0]
     r = _correlation(x, index)

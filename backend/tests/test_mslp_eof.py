@@ -11,6 +11,7 @@ import xarray as xr
 from app.mslp_eof import (autocorrelation, compare_periods, latitude_weights,
                           monthly_anomalies, open_mslp, pressure_hpa, select_domain,
                           solve_eof, spatial_correlation, validate_grid, validate_months)
+from app.mslp_indices import _pc1_multiplier, align_pc1_convention
 
 
 def pressure_field(n=72, descending=False, negative_lon=False):
@@ -66,6 +67,16 @@ def test_climatology_and_optional_detrending():
     t = np.arange(len(field)) - (len(field)-1)/2
     assert np.max(np.abs(np.einsum("t,tij->ij", t, primary))) > 1
     np.testing.assert_allclose(np.einsum("t,tij->ij", t, detrended), 0, atol=1e-8)
+    for month in range(1, 13):
+        np.testing.assert_allclose(detrended[months == month].mean(axis=0), 0, atol=1e-10)
+
+
+def test_joint_detrending_removes_known_trend_and_seasonality_with_partial_year():
+    t = np.arange(70)
+    months = t % 12 + 1
+    values = (1000 + .02*t + 4*np.sin(2*np.pi*months/12))[:, None, None]
+    residual, _ = monthly_anomalies(values, months, detrend=True)
+    np.testing.assert_allclose(residual, 0, atol=1e-10)
 
 
 def test_latitude_area_weights():
@@ -120,6 +131,43 @@ def test_known_separable_modes_and_full_rank_reconstruction():
     anomaly, _ = monthly_anomalies(field.values, field.time.dt.month.values)
     reconstructed = result.standardized_pc.values @ result.regression_map.values.reshape(2, -1)
     np.testing.assert_allclose(reconstructed.reshape(field.shape), anomaly, atol=1e-10)
+
+
+def test_twelve_modes_increase_retained_variance_without_changing_leading_modes():
+    field = select_domain(pressure_hpa(pressure_field()), "north")
+    six = solve_eof(field, 6)
+    twelve = solve_eof(field)
+    assert twelve.sizes["mode"] == 12
+    np.testing.assert_allclose(twelve.eigenvalue[:6], six.eigenvalue, rtol=1e-10)
+    np.testing.assert_allclose(twelve.explained_variance_percent[:6], six.explained_variance_percent)
+    assert float(twelve.cumulative_variance_percent[-1]) > float(six.cumulative_variance_percent[-1])
+
+
+@pytest.mark.parametrize("hemisphere", ["north", "south"])
+@pytest.mark.parametrize("initial_sign", [-1, 1])
+def test_saved_pc1_convention_preserves_reconstruction_and_is_idempotent(hemisphere, initial_sign):
+    grid = pressure_field().interp(latitude=np.arange(-90., 91., 10.))
+    field = select_domain(pressure_hpa(grid), hemisphere)
+    original = solve_eof(field)
+    # Exercise both initial signs independently of the eigensolver's convention.
+    sign = initial_sign * _pc1_multiplier(original)
+    for name in ("pc", "standardized_pc", "weighted_eof", "regression_map"):
+        original[name].loc[{"mode": 1}] *= sign
+    before = original.standardized_pc.values @ original.regression_map.values.reshape(12, -1)
+    aligned = align_pc1_convention(original)
+    assert _pc1_multiplier(aligned) == 1
+    assert _pc1_multiplier(original) == initial_sign  # caller remains unchanged
+    for name in ("pc", "standardized_pc", "weighted_eof", "regression_map"):
+        np.testing.assert_allclose(aligned[name].isel(mode=0), initial_sign * original[name].isel(mode=0))
+        xr.testing.assert_identical(aligned[name].isel(mode=slice(1, None)),
+                                    original[name].isel(mode=slice(1, None)))
+    after = aligned.standardized_pc.values @ aligned.regression_map.values.reshape(12, -1)
+    np.testing.assert_allclose(after, before)
+    np.testing.assert_allclose(aligned.pc.values @ aligned.weighted_eof.values.reshape(12, -1),
+                               original.pc.values @ original.weighted_eof.values.reshape(12, -1))
+    xr.testing.assert_identical(aligned.eigenvalue, original.eigenvalue)
+    xr.testing.assert_identical(aligned.acf, original.acf)
+    xr.testing.assert_identical(align_pc1_convention(aligned), aligned)
 
 
 def test_mode_matching_sign_alignment_and_subspace_angles():
@@ -289,7 +337,9 @@ def test_cli_end_to_end_native_grid_retained_in_synthetic_validation(tmp_path):
     for hemi in ("northern", "southern"):
         for start in (1940, 1979):
             with xr.open_dataset(output / f"{hemi}_hemisphere" / f"{start}_1981" / "eof.nc") as ds:
-                assert ds.sizes["mode"] == 6
+                assert ds.sizes["mode"] == 12
+                assert _pc1_multiplier(ds) == 1
+                assert "pc1_sign_convention" in ds.attrs
                 assert ds.sizes["longitude"] == 12
                 assert ds.attrs["last_month"] == "1981-10"
     args.render_only = True
@@ -299,7 +349,7 @@ def test_cli_end_to_end_native_grid_retained_in_synthetic_validation(tmp_path):
     args.n_modes = 5
     with pytest.raises(ValueError, match="mismatch"):
         module.run(args)
-    args.n_modes = 6
+    args.n_modes = 12
     args.allow_other_resolution = False
     with pytest.raises(ValueError, match="native"):
         module.run(args)

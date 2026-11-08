@@ -15,7 +15,7 @@ From `backend`, using the project's Python environment:
 python3 -m pip install -r requirements.txt
 python3 scripts/analyse_mslp_eof.py \
   --input data/2374cdda86a09cf96f159388ce2d78e1.nc \
-  --start-years 1940 1979 --hemispheres north south --n-modes 6 \
+  --start-years 1940 1979 --hemispheres north south --n-modes 12 \
   --output-dir diagnostics/mslp_eof
 python3 -m pytest -q
 ```
@@ -62,16 +62,36 @@ X_retained = pc @ weighted_eof
 The physical regression maps have units hPa per one sample-standard-deviation
 PC. These differ from the dimensionless orthonormal weighted EOF vectors. They
 remain defined at the pole without dividing by zero. Each initial EOF sign
-makes the largest absolute regression loading positive. Primary analysis keeps
+makes the largest absolute regression loading positive. Before export, the
+workflow enforces the AO/SAM convention on **PC1 only**: positive PC1 has lower
+area-weighted 65–90° polar-cap pressure relative to the 35–55° midlatitude band.
+PC1, standardised PC1, weighted EOF1 and regression map 1 are flipped together,
+preserving reconstruction and all variance/persistence statistics. An absent or
+numerically zero pressure contrast stops the run. This prescribed rule does not
+fit reference correlations or identify higher modes as AO/SAM. PCs 2–12 keep the
+largest-loading-positive convention. The applied PC1 multiplier is saved in
+NetCDF attributes and the summary JSON; rerendering is idempotent.
+
+The default is **12 modes**. Retaining more modes increases cumulative captured
+variance without changing leading eigenvalues or their percentages of total
+variance. Existing six-mode outputs must be recomputed, not rendered with the
+new default. Pass `--n-modes 6` explicitly to render a previous six-mode basis;
+the PC1 sign guardrail will still apply.
+
+Primary analysis keeps
 trends; use `--detrend` with a **separate output directory** for sensitivity.
+This fits monthly indicators and a linear trend jointly, keeping residual
+calendar-month means zero even with a partial final year. Previous detrended
+caches using sequential seasonal removal and detrending must be recomputed;
+their missing method attribute prevents reuse.
 Independent climatologies mean that period comparisons measure variability
 about different seasonal baselines, not mean-pressure change.
 
 Only the `T × T` covariance and a spatial slab are dense. Two passes accumulate
 covariance and recover patterns; no spatial covariance or full anomaly cube is
 held in RAM. `--block-latitudes 16` is the default. Smaller slabs lower memory
-but increase compressed-file reads. For 1,042 months, 281 × 1,440 cells and six
-modes, the live-array estimate is **1.19 GiB**, plus IO, Dask and BLAS caches and
+but increase compressed-file reads. For 1,042 months, 281 × 1,440 cells and twelve
+modes, the live-array estimate is **1.22 GiB**, plus IO, Dask and BLAS caches and
 completed outputs. A full float64 hemisphere would be about 3.1 GiB; a spatial
 covariance exceeds 1 TiB. Actual chunking/compression affects peak memory and
 runtime. Logs show memory estimates and progress through both passes. The
@@ -80,7 +100,7 @@ and known low-rank modes.
 
 On the inspected 16 GiB workstation, `--block-latitudes 64` substantially reduced
 repeated decompression of this file's wide encoded spatial chunks. Its working
-array estimates are 4.41 GiB (full record) and 2.45 GiB (modern period), plus
+array estimates with twelve modes are 4.44 GiB (full record) and 2.49 GiB (modern period), plus
 caches. Use this setting when memory permits; the conservative default remains
 16 rows. Both settings preserve the identical covariance definition and grid.
 
@@ -108,7 +128,8 @@ products remain tracked.
 
 Matching maximises total absolute **area-weighted, spatial-mean-centred Pearson
 correlation** among retained regression maps. Comparison maps and PCs use the
-same sign flips; original saved bases retain their initial signs. PC comparisons
+same sign flips; saved bases retain their exported signs (AO/SAM convention for
+PC1, largest-loading-positive for higher modes). PC comparisons
 use each basis's own climatology and full-period sample SD. These are descriptive
 common-interval correlations, not controlled projections onto a single basis.
 Modes outside the retained set cannot be matched. Small subspace principal
@@ -168,9 +189,12 @@ Index validation runs offline when `OUTPUT/reference_indices/` exists, or when
 ```bash
 python3 scripts/analyse_mslp_eof.py \
   --input data/2374cdda86a09cf96f159388ce2d78e1.nc \
-  --output-dir diagnostics/mslp_eof --render-only \
+  --output-dir diagnostics/mslp_eof --n-modes 6 --render-only \
   --index-data-dir diagnostics/mslp_eof/reference_indices
 ```
+
+This example explicitly selects the previous six-mode basis. A twelve-mode run
+needs recomputation first; rerender it with `--n-modes 12` (the new default).
 
 The reference directory contains official text tables named `AO.txt`, `AAO.txt`
 and/or `SAM.txt`. Optional `P40.txt` and `P65.txt` allow direct reconstruction of
@@ -195,8 +219,9 @@ Reference data remain ignored by Git with the other diagnostics.
 Primary correlations use unsmoothed, calendar-matched monthly values on a common
 1979-or-later interval for each index across the supplied EOF bases. Sign
 alignment is inferred from the polar–midlatitude regression loading, rather
-than maximising correlation. Saved EOFs, regression maps and PCs retain their
-original signs. The JSON also retains raw higher-mode correlations, Spearman
+than maximising correlation. Saved EOF1, regression map 1 and PC1 already follow
+that convention, so the validation multiplier should be +1. Higher modes keep
+their original signs. The JSON also retains raw higher-mode correlations, Spearman
 correlations, paired-series detrending sensitivity, monthly correlations within
 seasons, pre-1979 checks and comparisons ending in 2024. These comparisons support
 mode identification; they do not establish causation or independent forecasting

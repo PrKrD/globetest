@@ -14,9 +14,9 @@ import numpy as np
 import xarray as xr
 from scipy.linalg import eigh
 from scipy.optimize import linear_sum_assignment
-from scipy.signal import detrend as linear_detrend
 
 LOG = logging.getLogger(__name__)
+DETRENDING_METHOD = "joint monthly climatology and linear trend"
 
 
 def open_mslp(inputs: list[str], variable: str = "msl", block_latitudes: int = 16) -> tuple[xr.DataArray, dict]:
@@ -157,7 +157,14 @@ def monthly_anomalies(values: np.ndarray, months: np.ndarray,
     climatology = np.stack([x[months == m].mean(axis=0) for m in range(1, 13)])
     anomaly = x - climatology[months - 1]
     if detrend:
-        anomaly = linear_detrend(anomaly, axis=0, type="linear")
+        # Residualise time against the same monthly indicators before fitting.
+        # Sequential deseasonalising then ordinary detrending reintroduces a
+        # seasonal cycle because raw time has different means in each month.
+        t = np.arange(len(x), dtype=float)
+        monthly_time = np.array([t[months == m].mean() for m in range(1, 13)])
+        t -= monthly_time[months - 1]
+        slope = np.tensordot(t, anomaly, axes=(0, 0)) / np.dot(t, t)
+        anomaly -= t.reshape((-1,) + (1,) * (x.ndim - 1)) * slope
     return anomaly, climatology
 
 
@@ -195,7 +202,7 @@ def autocorrelation(pc: np.ndarray, max_lag: int = 24) -> tuple[np.ndarray, np.n
     return acf, crossing
 
 
-def solve_eof(field: xr.DataArray, n_modes: int = 6, block_latitudes: int = 16,
+def solve_eof(field: xr.DataArray, n_modes: int = 12, block_latitudes: int = 16,
               detrend: bool = False, max_lag: int = 24) -> xr.Dataset:
     """Two exact passes: sum Xw Xw.T, then recover EOFs and regressions.
 
@@ -289,6 +296,7 @@ def solve_eof(field: xr.DataArray, n_modes: int = 6, block_latitudes: int = 16,
         attrs={"solver": "exact spatially streamed temporal Gram eigendecomposition",
                "first_month": month_strings(field.time)[0], "last_month": month_strings(field.time)[-1],
                "n_samples": nt, "detrended": int(detrend), "total_weighted_variance_hpa2": total,
+               "detrending_method": DETRENDING_METHOD if detrend else "none",
                "estimated_working_array_bytes": memory,
                "anomalies": "independent monthly climatology for this analysis period",
                "weighting": "sqrt(cos(latitude)); covariance, no cell standardisation",
