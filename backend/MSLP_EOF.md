@@ -84,6 +84,32 @@ This fits monthly indicators and a linear trend jointly, keeping residual
 calendar-month means zero even with a partial final year. Previous detrended
 caches using sequential seasonal removal and detrending must be recomputed;
 their missing method attribute prevents reuse.
+
+To reproduce the 12-mode linear detrending sensitivity for the modern period
+and compare it with the saved 12-mode baseline (run from `backend`):
+
+```bash
+python3 scripts/analyse_mslp_eof.py \
+  --input data/2374cdda86a09cf96f159388ce2d78e1.nc \
+  --start-years 1979 --end-year 2026 --hemispheres north south \
+  --n-modes 12 --block-latitudes 64 --detrend \
+  --output-dir diagnostics/mslp_eof_12_detrended \
+  --index-data-dir diagnostics/mslp_eof/reference_indices
+python3 scripts/compare_mslp_detrending.py \
+  --baseline-dir diagnostics/mslp_eof_12 \
+  --detrended-dir diagnostics/mslp_eof_12_detrended \
+  --output-dir diagnostics/mslp_eof_12_detrended/comparisons
+```
+
+The [detrending comparison script](scripts/compare_mslp_detrending.py) requires
+identical input fingerprints, months, grids and 12-mode counts. It checks the
+saved detrended PCs for zero calendar-month means and linear slopes, matches
+mode patterns with sign alignment, and exports paired maps, PC overlays,
+ranked variance charts (including absolute eigenvalues), CSV/NetCDF statistics,
+subspace angles and a Markdown report. Percentages before and after detrending
+use their respective total variances. The comparison report records the actual
+ending month; `2026` in a folder name does not imply December is available.
+
 Independent climatologies mean that period comparisons measure variability
 about different seasonal baselines, not mean-pressure change.
 

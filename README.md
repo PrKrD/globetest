@@ -1,4 +1,37 @@
-# Ocean Velocity Globe
+# Statistical-Dynamical SST Anomaly Model
+
+## Final goal
+
+Develop a **global, physically interpretable statistical-dynamical model of
+sea surface temperature (SST) anomalies**, focusing on decadal and interdecadal
+variability.
+
+The model will combine stochastic atmospheric forcing with simplified ocean
+heat-budget dynamics, including surface heat exchange, horizontal advection,
+subduction/obduction, and diffusion, using a geographically varying but
+temporally fixed late-winter mixed layer.
+
+The ultimate objective is to **understand and quantify the relative
+contributions of atmospheric variability and ocean circulation to the spatial
+patterns, persistence, and low-frequency variability of SST anomalies**,
+validating the simulations against observational records.
+
+## Current foundation
+
+The repository currently provides ocean-field preparation, an interactive globe
+for inspecting those fields, and an independent atmospheric MSLP EOF analysis.
+The SST anomaly time-integration model and observational validation workflow
+are not yet implemented.
+
+The ocean calculations expose unrounded scientific arrays independently of
+the browser export through [OceanFields](backend/app/ocean_fields.py).
+The [MSLP EOF workflow](backend/MSLP_EOF.md) characterises atmospheric pressure
+variability; it does not yet estimate stochastic surface heat-flux forcing.
+The current ocean product uses the maximum available monthly climatological
+MLD. Its relationship to the intended fixed late-winter mixed layer must be
+specified and validated before it becomes a model input.
+
+## Ocean Velocity Globe
 
 An interactive Cesium globe combining the Maximenko mean dynamic-topography
 product with the de Boyer Montégut et al. (2023) mixed-layer-depth climatology.
