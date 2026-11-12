@@ -132,3 +132,10 @@ The independent atmospheric pipeline analyses monthly MSLP at its native 0.25°
 resolution in each hemisphere and compares the 1940 and 1979 start dates.
 See [the MSLP EOF guide](MSLP_EOF.md) for installation, commands, numerical
 method, output definitions, validation and interpretation limits.
+
+The separate [surface regression guide](MSLP_SURFACE_REGRESSION.md) describes
+individual and joint regressions of global native-grid ERA5 turbulent heat
+fluxes and wind stress on the saved undetrended 12-PC bases, including
+orthogonality checks, equivalence tests and regional variance diagnostics.
+The same entry point supports fixed-model annual evaluation and seasonal joint
+regressions through `--sensitivity`, with separate outputs and baseline checks.

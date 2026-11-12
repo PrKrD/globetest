@@ -27,6 +27,12 @@ The ocean calculations expose unrounded scientific arrays independently of
 the browser export through [OceanFields](backend/app/ocean_fields.py).
 The [MSLP EOF workflow](backend/MSLP_EOF.md) characterises atmospheric pressure
 variability; it does not yet estimate stochastic surface heat-flux forcing.
+The [surface regression workflow](backend/MSLP_SURFACE_REGRESSION.md) compares
+individual and joint regressions of global ERA5 turbulent heat fluxes and wind
+stress on the saved undetrended pressure PCs, with numerical equivalence and
+regional explained-variance diagnostics.
+It also evaluates annual-mean reconstruction and seasonally varying joint
+regressions while retaining the original monthly EOF basis.
 The current ocean product uses the maximum available monthly climatological
 MLD. Its relationship to the intended fixed late-winter mixed layer must be
 specified and validated before it becomes a model input.
